@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: sales-coach-postgres
+    environment:
+      POSTGRES_DB: sales_coach
+      POSTGRES_USER: sales_coach
+      POSTGRES_PASSWORD: sales_coach
+    ports:
+      - "5432:5432"
+    volumes:
+      - sales_coach_pg:/var/lib/postgresql/data
+
+volumes:
+  sales_coach_pg:

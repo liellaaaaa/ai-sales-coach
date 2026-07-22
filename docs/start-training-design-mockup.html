@@ -1,0 +1,1152 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>开始训练设计意向稿</title>
+  <!--
+    Huashu design assumptions:
+    - 这不是生产页面，只是训练启动页的设计意向 mockup。
+    - 用户任务是快速选训练情景，然后微调客户信息，不是填写后台表单。
+    - 视觉基调保留 Google / Material 的清爽、可信、低学习成本。
+    - 本稿探索 3 个方向，从保守到更有设计感。推荐方向是 Direction B。
+  -->
+  <style>
+    :root {
+      --ink: #202124;
+      --muted: #5f6b7a;
+      --soft: #f6f8fb;
+      --line: #dfe5ee;
+      --line-strong: #c7d4e6;
+      --blue: #1a73e8;
+      --blue-soft: #e8f0fe;
+      --blue-wash: #f4f8ff;
+      --green: #188038;
+      --amber: #f9ab00;
+      --shadow: 0 18px 44px rgba(42, 63, 92, .11);
+      --shadow-soft: 0 8px 24px rgba(42, 63, 92, .08);
+      font-family: "Google Sans", "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 18% 8%, rgba(232, 240, 254, .72), transparent 28%),
+        radial-gradient(circle at 84% 18%, rgba(241, 248, 233, .62), transparent 24%),
+        #f8fafc;
+      color: var(--ink);
+    }
+
+    .canvas {
+      width: min(1320px, calc(100vw - 48px));
+      margin: 0 auto;
+      padding: 40px 0 64px;
+    }
+
+    .design-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 360px;
+      gap: 32px;
+      align-items: end;
+      margin-bottom: 28px;
+    }
+
+    .design-head small {
+      display: inline-flex;
+      width: fit-content;
+      border-radius: 999px;
+      background: var(--blue-soft);
+      padding: 6px 10px;
+      color: var(--blue);
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .design-head h1 {
+      margin: 14px 0 10px;
+      font-size: clamp(34px, 5vw, 62px);
+      line-height: 1.04;
+      letter-spacing: 0;
+    }
+
+    .design-head p,
+    .note-card p,
+    .direction-card p,
+    .field-row span,
+    .template small,
+    .summary p {
+      color: var(--muted);
+      line-height: 1.65;
+    }
+
+    .design-head p {
+      max-width: 720px;
+      margin: 0;
+      font-size: 15px;
+    }
+
+    .note-card {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, .78);
+      padding: 18px;
+      box-shadow: var(--shadow-soft);
+    }
+
+    .note-card b,
+    .direction-card b,
+    .mock-section-title b,
+    .field-row b,
+    .template b,
+    .summary b {
+      display: block;
+      color: var(--ink);
+    }
+
+    .note-card p {
+      margin: 8px 0 0;
+      font-size: 13px;
+    }
+
+    .directions {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .direction-card {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, .84);
+      padding: 16px;
+      box-shadow: 0 1px 2px rgba(60, 64, 67, .04);
+    }
+
+    .direction-card.recommended {
+      border-color: rgba(26, 115, 232, .42);
+      background: #fff;
+      box-shadow: 0 2px 5px rgba(26, 115, 232, .08);
+    }
+
+    .direction-card em {
+      display: inline-flex;
+      border-radius: 999px;
+      background: #f1f4f8;
+      padding: 5px 8px;
+      color: #697586;
+      font-size: 11px;
+      font-style: normal;
+      font-weight: 750;
+    }
+
+    .direction-card.recommended em {
+      background: var(--blue-soft);
+      color: var(--blue);
+    }
+
+    .direction-card b {
+      margin-top: 10px;
+      font-size: 16px;
+    }
+
+    .direction-card p {
+      min-height: 44px;
+      margin: 8px 0 0;
+      font-size: 13px;
+    }
+
+    .flow-map {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .flow-card {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, .86);
+      padding: 18px;
+      box-shadow: 0 1px 2px rgba(60, 64, 67, .04);
+    }
+
+    .flow-card b {
+      display: block;
+      font-size: 16px;
+    }
+
+    .flow-card p {
+      margin: 8px 0 14px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .flow-steps {
+      display: grid;
+      gap: 8px;
+      counter-reset: step;
+    }
+
+    .flow-steps span {
+      counter-increment: step;
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+      color: #3c4656;
+      font-size: 13px;
+      font-weight: 680;
+    }
+
+    .flow-steps span::before {
+      content: counter(step);
+      display: grid;
+      width: 28px;
+      height: 28px;
+      place-items: center;
+      border-radius: 999px;
+      background: #f1f4f8;
+      color: #697586;
+      font-size: 11px;
+      font-weight: 820;
+    }
+
+    .mockup {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: rgba(255, 255, 255, .86);
+      padding: 28px;
+      box-shadow: var(--shadow);
+      margin-top: 18px;
+    }
+
+    .mockup:first-of-type {
+      margin-top: 0;
+    }
+
+    .mock-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 22px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid #edf1f6;
+    }
+
+    .mock-label em {
+      display: inline-flex;
+      width: fit-content;
+      border-radius: 999px;
+      background: #f1f4f8;
+      padding: 6px 9px;
+      color: #697586;
+      font-size: 11px;
+      font-style: normal;
+      font-weight: 780;
+    }
+
+    .mock-label b {
+      display: block;
+      margin-top: 8px;
+      font-size: 22px;
+    }
+
+    .mock-label span {
+      max-width: 520px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.7;
+      text-align: right;
+    }
+
+    .mockup.recommended .mock-label em {
+      background: var(--blue-soft);
+      color: var(--blue);
+    }
+
+    .horizontal-templates {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .compact-card {
+      position: relative;
+      min-height: 122px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      padding: 14px;
+    }
+
+    .compact-card.active {
+      border-color: rgba(26, 115, 232, .46);
+      background: var(--blue-wash);
+    }
+
+    .compact-card.active::after {
+      content: "";
+      position: absolute;
+      inset: auto 0 0;
+      height: 3px;
+      border-radius: 0 0 10px 10px;
+      background: var(--blue);
+    }
+
+    .compact-card small {
+      color: #697586;
+      font-size: 11px;
+      font-weight: 760;
+    }
+
+    .compact-card b {
+      display: block;
+      margin: 10px 0 8px;
+      font-size: 15px;
+    }
+
+    .compact-card p {
+      display: -webkit-box;
+      margin: 0;
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+
+    .inline-form-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .inline-form-grid .wide {
+      grid-column: span 2;
+    }
+
+    .wizard-shell {
+      display: grid;
+      grid-template-columns: 270px minmax(0, 1fr);
+      gap: 24px;
+    }
+
+    .wizard-rail {
+      display: grid;
+      gap: 10px;
+      align-content: start;
+      border-right: 1px solid #edf1f6;
+      padding-right: 18px;
+    }
+
+    .wizard-step {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+      border-radius: 12px;
+      padding: 10px;
+    }
+
+    .wizard-step.active {
+      background: var(--blue-wash);
+      color: var(--blue);
+    }
+
+    .wizard-step i {
+      display: grid;
+      width: 34px;
+      height: 34px;
+      place-items: center;
+      border-radius: 999px;
+      background: #f1f4f8;
+      color: #697586;
+      font-style: normal;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .wizard-step.active i {
+      background: var(--blue);
+      color: #fff;
+    }
+
+    .wizard-step b {
+      display: block;
+      font-size: 13px;
+    }
+
+    .wizard-step span {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .choice-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .choice-card {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+      padding: 16px;
+    }
+
+    .choice-card.active {
+      border-color: rgba(26, 115, 232, .46);
+      background: var(--blue-wash);
+    }
+
+    .choice-card b {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 16px;
+    }
+
+    .choice-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .app-hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 240px;
+      gap: 24px;
+      align-items: end;
+      padding: 6px 4px 26px;
+    }
+
+    .app-hero small {
+      color: var(--blue);
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    .app-hero h2 {
+      margin: 10px 0 8px;
+      font-size: 42px;
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+
+    .app-hero p {
+      max-width: 650px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+      padding: 18px;
+      box-shadow: var(--shadow-soft);
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .metric strong {
+      display: block;
+      margin: 8px 0 4px;
+      font-size: 30px;
+      line-height: 1;
+    }
+
+    .training-surface {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: #fff;
+      padding: 24px;
+      box-shadow: 0 1px 2px rgba(60, 64, 67, .05);
+    }
+
+    .surface-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 22px;
+    }
+
+    .mode-pill {
+      display: inline-grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #f4f7fb;
+      padding: 4px;
+    }
+
+    .mode-pill span {
+      border-radius: 999px;
+      padding: 9px 16px;
+      color: #647284;
+      font-size: 13px;
+      font-weight: 760;
+    }
+
+    .mode-pill span:first-child {
+      background: #fff8df;
+      color: #3c4043;
+      box-shadow: 0 1px 2px rgba(60, 64, 67, .12);
+    }
+
+    .step {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      padding: 9px 14px;
+      color: #425066;
+      font-size: 13px;
+      font-weight: 760;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: 1.08fr .92fr;
+      gap: 22px;
+      align-items: start;
+    }
+
+    .panel {
+      min-width: 0;
+    }
+
+    .mock-section-title {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+
+    .mock-section-title b {
+      font-size: 15px;
+    }
+
+    .mock-section-title span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .template-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .template {
+      position: relative;
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      padding: 13px;
+    }
+
+    .template.active {
+      border-color: rgba(26, 115, 232, .42);
+      background: var(--blue-wash);
+    }
+
+    .template.active::before {
+      content: "";
+      position: absolute;
+      inset: 12px auto 12px 0;
+      width: 3px;
+      border-radius: 999px;
+      background: var(--blue);
+    }
+
+    .template i {
+      display: grid;
+      width: 38px;
+      height: 38px;
+      place-items: center;
+      border-radius: 12px;
+      background: #f1f4f8;
+      color: #5f6b7a;
+      font-style: normal;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .template.active i {
+      background: var(--blue-soft);
+      color: var(--blue);
+    }
+
+    .template b {
+      font-size: 15px;
+      line-height: 1.25;
+    }
+
+    .template small {
+      display: block;
+      margin-top: 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 12px;
+    }
+
+    .template em {
+      border-radius: 999px;
+      background: #f6f8fb;
+      padding: 5px 8px;
+      color: #5f6b7a;
+      font-size: 11px;
+      font-style: normal;
+      font-weight: 750;
+    }
+
+    .brief-card {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: linear-gradient(180deg, #fff, #fbfdff);
+      padding: 18px;
+    }
+
+    .brief-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .field-row {
+      display: grid;
+      gap: 7px;
+    }
+
+    .field-row.wide {
+      grid-column: 1 / -1;
+    }
+
+    .field-row b {
+      font-size: 12px;
+    }
+
+    .field-row span {
+      min-height: 46px;
+      border: 1px solid var(--line);
+      border-bottom-color: var(--line-strong);
+      border-radius: 8px;
+      background: #fff;
+      padding: 13px 12px;
+      color: #202124;
+      font-size: 13px;
+      font-weight: 650;
+      box-shadow: inset 0 -1px 0 rgba(199, 212, 230, .52);
+    }
+
+    .brief-row-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      margin: 18px 0 12px;
+      padding-top: 14px;
+      border-top: 1px solid #edf1f6;
+    }
+
+    .brief-row-title b {
+      font-size: 14px;
+    }
+
+    .brief-row-title span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .summary {
+      margin-top: 18px;
+      border: 1px solid #d6e2f4;
+      border-radius: 14px;
+      background: #f7faff;
+      padding: 16px;
+    }
+
+    .summary p {
+      margin: 8px 0 0;
+      font-size: 13px;
+    }
+
+    .mock-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-top: 22px;
+      padding-top: 18px;
+      border-top: 1px solid #edf1f6;
+    }
+
+    .mock-actions span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .primary {
+      border: 0;
+      border-radius: 999px;
+      background: var(--blue);
+      padding: 13px 20px;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 800;
+      box-shadow: 0 8px 18px rgba(26, 115, 232, .22);
+    }
+
+    .variants {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .mini {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+      padding: 14px;
+    }
+
+    .mini b {
+      display: block;
+      margin-bottom: 9px;
+      font-size: 13px;
+    }
+
+    .mini div {
+      height: 8px;
+      border-radius: 999px;
+      background: #e9eef6;
+      margin-top: 7px;
+    }
+
+    .mini div:nth-child(2) { width: 88%; }
+    .mini div:nth-child(3) { width: 62%; }
+    .mini div:nth-child(4) { width: 74%; }
+
+    @media (max-width: 980px) {
+      .canvas { width: min(100vw - 28px, 720px); }
+      .design-head,
+      .app-hero,
+      .workspace,
+      .horizontal-templates,
+      .inline-form-grid,
+      .wizard-shell,
+      .choice-grid,
+      .flow-map,
+      .directions,
+      .variants {
+        grid-template-columns: 1fr;
+      }
+
+      .surface-top,
+      .mock-actions {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .brief-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .mock-label {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .mock-label span {
+        max-width: none;
+        text-align: left;
+      }
+
+      .inline-form-grid .wide {
+        grid-column: auto;
+      }
+
+      .wizard-rail {
+        border-right: 0;
+        border-bottom: 1px solid #edf1f6;
+        padding-right: 0;
+        padding-bottom: 14px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="canvas">
+    <header class="design-head">
+      <div>
+        <small>设计意向稿 / Start Training Mockup</small>
+        <h1>把开始训练做成一个训练工作台</h1>
+        <p>目标不是让页面更花，而是让用户一眼知道：先选一个训练情景，再调整客户信息，最后进入下一步。设计重点是减少嵌套边框、降低模板卡文字噪音、让输入区更像可编辑内容。</p>
+      </div>
+      <aside class="note-card">
+        <b>推荐方向</b>
+        <p>Direction B：左侧模板列表，右侧编辑客户信息。它比五张横排卡更好扫读，也更像实际工作流。</p>
+      </aside>
+    </header>
+
+    <section class="directions" aria-label="设计方向">
+      <article class="direction-card">
+        <em>Direction A</em>
+        <b>Material Cleanup</b>
+        <p>保留现有结构，只减少灰底和多余边框。成本最低，但视觉提升有限。</p>
+      </article>
+      <article class="direction-card recommended">
+        <em>Direction B / 推荐</em>
+        <b>Training Workspace</b>
+        <p>模板从横排卡片变成可扫读列表，客户信息成为右侧编辑区。</p>
+      </article>
+      <article class="direction-card">
+        <em>Direction C</em>
+        <b>Guided Setup</b>
+        <p>做成分步向导，每步只露出一类信息。更清爽，但需要更多交互改造。</p>
+      </article>
+    </section>
+
+    <section class="flow-map" aria-label="双向导流程">
+      <article class="flow-card">
+        <b>客户情景陪练向导</b>
+        <p>用于练异议处理和销售话术。后端保存为 scenario_coaching flow。</p>
+        <div class="flow-steps">
+          <span>选择训练情景：价格、交期、品质、回款</span>
+          <span>编辑客户信息：客户、产品、需求、类型</span>
+          <span>设置客户画像：难度、性格、核心关注</span>
+          <span>确认训练目标：进入对话并生成客户开场</span>
+        </div>
+      </article>
+      <article class="flow-card">
+        <b>商机推进教练向导</b>
+        <p>用于推进真实商机下一步。后端保存为 opportunity_coach flow。</p>
+        <div class="flow-steps">
+          <span>选择商机阶段：了解、确认、论证、谈判、成交、回款</span>
+          <span>补充推进背景：最近沟通、关键阻碍、关键人</span>
+          <span>明确下一步里程碑：会议、测试、报价、订单、回款</span>
+          <span>生成推进训练目标：进入对话或推进方案</span>
+        </div>
+      </article>
+    </section>
+
+    <section class="mockup" aria-label="Direction A mockup">
+      <div class="mock-label">
+        <div>
+          <em>Direction A</em>
+          <b>Material Cleanup</b>
+        </div>
+        <span>保留现有横排结构，只做配色、边框和输入框质感优化。它最容易落地，但信息密度问题只被缓解，没有被根治。</span>
+      </div>
+
+      <div class="training-surface">
+        <div class="surface-top">
+          <div class="mode-pill">
+            <span>客户情景陪练</span>
+            <span>商机推进教练</span>
+          </div>
+          <div class="step">第 1 步 / 3 步　基础信息</div>
+        </div>
+
+        <div class="mock-section-title">
+          <b>常用训练模板</b>
+          <span>点选模板后继续微调客户信息和训练目标。</span>
+        </div>
+        <div class="horizontal-templates">
+          <article class="compact-card active">
+            <small>模板 1 / 价格</small>
+            <b>价格异议</b>
+            <p>客户认为报价偏高，需要确认价值和让步边界</p>
+          </article>
+          <article class="compact-card">
+            <small>模板 2 / 交期</small>
+            <b>交期确认</b>
+            <p>客户担心交付延误，需要明确排产和风险预案</p>
+          </article>
+          <article class="compact-card">
+            <small>模板 3 / 品质</small>
+            <b>品质质疑</b>
+            <p>客户要求稳定性依据，需要匹配资料和测试口径</p>
+          </article>
+          <article class="compact-card">
+            <small>模板 4 / 售后</small>
+            <b>商机停滞</b>
+            <p>资料发出后客户没有推进，需要确认关键人</p>
+          </article>
+          <article class="compact-card">
+            <small>模板 5 / 回款</small>
+            <b>回款推进</b>
+            <p>客户拖延付款节点，需要确认责任人和时间表</p>
+          </article>
+        </div>
+
+        <div class="mock-section-title">
+          <b>客户信息</b>
+          <span>白底输入框减少 disabled 感，保留原字段布局。</span>
+        </div>
+        <div class="inline-form-grid">
+          <label class="field-row"><b>业务员</b><span>陈宇</span></label>
+          <label class="field-row"><b>客户名称</b><span>锦兴印染</span></label>
+          <label class="field-row"><b>产品</b><span>活性染料固色盐</span></label>
+          <label class="field-row"><b>客户类型</b><span>老客户，订单减少</span></label>
+          <label class="field-row wide"><b>需求</b><span>稳定性和交付保障</span></label>
+          <label class="field-row"><b>客户难度</b><span>标准</span></label>
+          <label class="field-row"><b>客户性格</b><span>谨慎型</span></label>
+          <label class="field-row"><b>核心关注</b><span>价格</span></label>
+        </div>
+
+        <div class="mock-actions">
+          <span>保存后直接展开商机阶段和训练目标。</span>
+          <button class="primary">保存并进入下一步</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="mockup recommended" aria-label="Direction B mockup">
+      <div class="mock-label">
+        <div>
+          <em>Direction B / 推荐</em>
+          <b>Training Workspace</b>
+        </div>
+        <span>把模板从横排卡片变成列表，右侧固定为客户信息。它最符合“先选情景，再调整客户资料”的真实工作流。</span>
+      </div>
+
+      <div class="app-hero">
+        <div>
+          <small>训练闭环</small>
+          <h2>先用一句话发起训练</h2>
+          <p>选择训练模式，套用客户情景，再微调本次训练的客户信息。</p>
+        </div>
+        <div class="metric">
+          <span>本地训练记录</span>
+          <strong>27</strong>
+          <span>完成训练后自动保存</span>
+        </div>
+      </div>
+
+      <div class="training-surface">
+        <div class="surface-top">
+          <div class="mode-pill">
+            <span>客户情景陪练</span>
+            <span>商机推进教练</span>
+          </div>
+          <div class="step">第 1 步 / 3 步　基础信息</div>
+        </div>
+
+        <div class="workspace">
+          <section class="panel">
+            <div class="mock-section-title">
+              <b>常用训练模板</b>
+              <span>选一个场景作为起点</span>
+            </div>
+            <div class="template-list">
+              <article class="template active">
+                <i>01</i>
+                <div>
+                  <b>价格异议</b>
+                  <small>客户认为报价偏高，需要确认价值和让步边界</small>
+                </div>
+                <em>价格</em>
+              </article>
+              <article class="template">
+                <i>02</i>
+                <div>
+                  <b>交期确认</b>
+                  <small>客户担心交付延误，需要明确排产和风险预案</small>
+                </div>
+                <em>交期</em>
+              </article>
+              <article class="template">
+                <i>03</i>
+                <div>
+                  <b>品质质疑</b>
+                  <small>客户要求稳定性依据，需要匹配资料和测试口径</small>
+                </div>
+                <em>品质</em>
+              </article>
+              <article class="template">
+                <i>04</i>
+                <div>
+                  <b>回款推进</b>
+                  <small>客户拖延付款节点，需要确认责任人和时间表</small>
+                </div>
+                <em>售后</em>
+              </article>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="mock-section-title">
+              <b>客户信息</b>
+              <span>默认带出，可按本次训练调整</span>
+            </div>
+            <div class="brief-card">
+              <div class="brief-grid">
+                <label class="field-row">
+                  <b>业务员</b>
+                  <span>陈宇</span>
+                </label>
+                <label class="field-row">
+                  <b>客户名称</b>
+                  <span>锦兴印染</span>
+                </label>
+                <label class="field-row">
+                  <b>产品</b>
+                  <span>活性染料固色盐</span>
+                </label>
+                <label class="field-row">
+                  <b>客户类型</b>
+                  <span>老客户，订单减少</span>
+                </label>
+                <label class="field-row wide">
+                  <b>需求</b>
+                  <span>稳定性和交付保障</span>
+                </label>
+              </div>
+
+              <div class="brief-row-title">
+                <b>训练参数</b>
+                <span>决定 AI 客户的压力和关注点</span>
+              </div>
+              <div class="brief-grid">
+                <label class="field-row">
+                  <b>客户难度</b>
+                  <span>标准</span>
+                </label>
+                <label class="field-row">
+                  <b>客户性格</b>
+                  <span>谨慎型</span>
+                </label>
+                <label class="field-row wide">
+                  <b>核心关注</b>
+                  <span>价格</span>
+                </label>
+              </div>
+
+              <div class="summary">
+                <b>本次训练会模拟</b>
+                <p>客户对报价和交付保障提出质疑，业务员需要在 3 轮以上对话中确认条件、回应异议并推进下一步。</p>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div class="mock-actions">
+          <span>保存后进入商机阶段和训练目标。</span>
+          <button class="primary">保存并进入下一步</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="mockup" aria-label="Direction C mockup">
+      <div class="mock-label">
+        <div>
+          <em>Direction C</em>
+          <b>Guided Setup</b>
+        </div>
+        <span>把页面做成分步向导，每一步只处理一个决策。视觉最清爽，但要改交互结构，适合后续版本。</span>
+      </div>
+
+      <div class="training-surface">
+        <div class="surface-top">
+          <div class="mode-pill">
+            <span>客户情景陪练</span>
+            <span>商机推进教练</span>
+          </div>
+          <div class="step">第 1 步 / 3 步　选择训练情景</div>
+        </div>
+
+        <div class="wizard-shell">
+          <aside class="wizard-rail">
+            <div class="wizard-step active">
+              <i>1</i>
+              <div><b>选择情景</b><span>先确定客户会怎么挑战你</span></div>
+            </div>
+            <div class="wizard-step">
+              <i>2</i>
+              <div><b>编辑客户信息</b><span>补齐客户、产品和需求</span></div>
+            </div>
+            <div class="wizard-step">
+              <i>3</i>
+              <div><b>确认训练目标</b><span>进入阶段和目标配置</span></div>
+            </div>
+          </aside>
+
+          <section class="panel">
+            <div class="mock-section-title">
+              <b>这次想训练哪类对话？</b>
+              <span>每一步只保留一个主要问题。</span>
+            </div>
+            <div class="choice-grid">
+              <article class="choice-card active">
+                <b>价格异议</b>
+                <p>客户认为报价偏高，重点训练价值解释、条件确认和让步边界。</p>
+              </article>
+              <article class="choice-card">
+                <b>交期确认</b>
+                <p>客户担心交付延误，重点训练排产说明和风险预案。</p>
+              </article>
+              <article class="choice-card">
+                <b>品质质疑</b>
+                <p>客户要求稳定性依据，重点训练资料匹配和测试口径。</p>
+              </article>
+              <article class="choice-card">
+                <b>回款推进</b>
+                <p>客户拖延付款节点，重点训练责任人、时间表和下一步动作。</p>
+              </article>
+            </div>
+
+            <div class="summary">
+              <b>下一步会填写</b>
+              <p>客户名称、产品、需求、客户难度、客户性格和核心关注。用户不会一次看到所有信息，压力更小。</p>
+            </div>
+          </section>
+        </div>
+
+        <div class="mock-actions">
+          <span>适合做成更完整的新手引导或移动端体验。</span>
+          <button class="primary">继续编辑客户信息</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="variants" aria-label="落地建议">
+      <article class="mini">
+        <b>信息密度策略</b>
+        <div></div><div></div><div></div>
+      </article>
+      <article class="mini">
+        <b>控件视觉策略</b>
+        <div></div><div></div><div></div>
+      </article>
+      <article class="mini">
+        <b>后续交互策略</b>
+        <div></div><div></div><div></div>
+      </article>
+    </section>
+  </main>
+</body>
+</html>
