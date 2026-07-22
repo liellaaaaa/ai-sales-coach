@@ -9,8 +9,8 @@
 - 前端：React + Vite
 - 后端：FastAPI
 - 数据库：PostgreSQL
-- 模型：MiniMax 适配层
-- 降级：没有 MiniMax 密钥时，后端会返回模拟客户回复和模拟复盘，方便先跑流程
+- 模型：DeepSeek V4 Flash（OpenAI 兼容接口）
+- 降级：没有 API Key 时，后端会返回模拟客户回复和模拟复盘，方便先跑流程
 
 ## 首版角色
 
@@ -49,14 +49,14 @@ npm run dev
 
 默认前端地址：`http://127.0.0.1:5173`
 
-## MiniMax 配置
+## DeepSeek 配置
 
 在 `backend/.env` 中补充：
 
 ```env
-SALES_COACH_MINIMAX_API_KEY=你的密钥
-SALES_COACH_MINIMAX_GROUP_ID=你的 GroupId
-SALES_COACH_MINIMAX_MODEL=abab6.5s-chat
+SALES_COACH_DEEPSEEK_API_KEY=你的密钥
+SALES_COACH_DEEPSEEK_BASE_URL=https://api.deepseek.com
+SALES_COACH_DEEPSEEK_MODEL=deepseek-v4-flash
 ```
 
 如果不填写，系统仍可用模拟回复跑通流程。
