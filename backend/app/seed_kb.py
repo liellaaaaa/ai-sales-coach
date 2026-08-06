@@ -50,6 +50,30 @@ FILE_META: dict[str, dict[str, str]] = {
         "scenario": "技术交涉",
         "tags": "产品参数,应用场景,价值表达,技术边界",
     },
+    "国内": {
+        "source_type": "SOP 与话术",
+        "stage": "通用",
+        "scenario": "通用",
+        "tags": "推荐话术,价值表达,异议处理,客户交涉案例,常见问题",
+    },
+    "海外": {
+        "source_type": "SOP 与话术",
+        "stage": "通用",
+        "scenario": "通用",
+        "tags": "推荐话术,价值表达,异议处理,客户交涉案例,常见问题",
+    },
+    "回款": {
+        "source_type": "SOP 与话术",
+        "stage": "回款",
+        "scenario": "回款交涉",
+        "tags": "推荐话术,禁用话术,风险提醒,商机推进规范,评分标准",
+    },
+    "陌拜": {
+        "source_type": "SOP 与话术",
+        "stage": "了解商机",
+        "scenario": "首次触达",
+        "tags": "推荐话术,禁用话术,关键动作,客户交涉案例,风险提醒",
+    },
 }
 
 # Title derived from first heading in the file
@@ -60,6 +84,10 @@ TITLE_MAP: dict[str, str] = {
     "湿摩擦": "研发四部——湿摩擦牢度提升剂",
     "日化": "研发五部——日化原料",
     "后整理": "研发六部——后整理",
+    "国内": "宏昊化工国内客户画像与价值主张",
+    "海外": "宏昊化工海外客户画像与价值主张",
+    "回款": "回款交涉训练要点",
+    "陌拜": "新客开发与陌拜训练要点",
 }
 
 DEFAULT_META = {
@@ -88,12 +116,18 @@ def seed_kb_from_folder(db: Session) -> int:
 
     for md_file in md_files:
         raw = md_file.read_bytes()
-        parsed = parse_document(md_file.name, raw, "产品说明书", "通用", "通用")
+        key = _match_key(md_file.name)
+        meta = FILE_META.get(key, DEFAULT_META) if key else DEFAULT_META
+        parsed = parse_document(
+            md_file.name,
+            raw,
+            meta["source_type"],
+            meta.get("stage", "通用"),
+            meta.get("scenario", "通用"),
+        )
         if parsed.parse_status == "empty" and not parsed.chunks:
             continue
 
-        key = _match_key(md_file.name)
-        meta = FILE_META.get(key, DEFAULT_META) if key else DEFAULT_META
         title = TITLE_MAP.get(key, md_file.stem) if key else md_file.stem
 
         # Skip if already imported (by title)

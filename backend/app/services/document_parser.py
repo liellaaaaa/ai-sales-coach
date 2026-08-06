@@ -90,6 +90,8 @@ SCENARIO_PATTERNS = [
     ("回款交涉", r"回款|付款|账期|对账"),
     ("老客维护", r"老客|订单减少|复购|断单"),
     ("条件谈判", r"账期|交付|责任|合同|条件"),
+    ("首次触达", r"首次|陌拜|初次|触达|第一次|加微信|开场"),
+    ("约到拜访", r"拜访|约见|上门|见面"),
 ]
 
 
@@ -297,7 +299,11 @@ def _validate_chunks(chunks: list[ParsedChunk]) -> list[ParsedChunk]:
 
 
 def _document_kind(source_type: str, text: str) -> str:
-    marker = f"{source_type} {text[:600]}"
+    if re.search(r"产品说明书|产品|manual", source_type or "", flags=re.IGNORECASE):
+        return "product"
+    if source_type:
+        return "sop"
+    marker = (text or "")[:600]
     if re.search(r"产品|说明书|参数|规格|工艺|product|manual", marker, flags=re.IGNORECASE):
         return "product"
     return "sop"
