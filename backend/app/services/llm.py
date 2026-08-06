@@ -1,4 +1,5 @@
 import json
+import logging
 import time
 from typing import Any
 
@@ -6,6 +7,8 @@ import httpx
 
 from app.models import KnowledgeItem, TrainingMessage, TrainingSession
 from app.services.llm_config import EffectiveLLMConfig, get_effective_llm_config
+
+logger = logging.getLogger(__name__)
 
 
 def _strip_thinking(text: str) -> str:
@@ -73,7 +76,7 @@ class LLMClient:
             sender = "USER" if msg.role == "sales" else "BOT"
             history.append({"sender_type": sender, "text": msg.content})
         try:
-            data = await self._chat(history, config, max_tokens=180)
+            data = await self._chat(history, config, max_tokens=1024)
         except httpx.HTTPError:
             data = ""
         return data or self._mock_customer_reply(session, messages)
@@ -132,7 +135,7 @@ class LLMClient:
             f"最近对话：\n{transcript}"
         )
         try:
-            data = await self._chat([{"sender_type": "USER", "text": prompt}], config, max_tokens=220)
+            data = await self._chat([{"sender_type": "USER", "text": prompt}], config, max_tokens=1024)
         except httpx.HTTPError:
             return fallback
         return data.strip().strip('"“”') or fallback
@@ -259,8 +262,12 @@ class LLMClient:
         choices = body.get("choices") or []
         if not choices:
             return ""
-        message = choices[0].get("message") or {}
-        return _strip_thinking(message.get("content") or choices[0].get("text") or "")
+        choice = choices[0]
+        message = choice.get("message") or {}
+        content = _strip_thinking(message.get("content") or choice.get("text") or "")
+        if choice.get("finish_reason") == "length":
+            logger.warning("LLM 输出达到 max_tokens 上限被截断 (model=%s, max_tokens=%s)", config.model_id, max_tokens)
+        return content
 
     async def _chat_legacy(self, messages: list[dict], config: EffectiveLLMConfig, max_tokens: int) -> str:
         url = f"https://api.minimax.chat/v1/text/chatcompletion_v2?GroupId={config.group_id}"
