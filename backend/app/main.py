@@ -1,14 +1,24 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.db.session import Base, engine
+from app.db.session import Base, SessionLocal, engine
 from app.db.migrations import ensure_runtime_schema
 from app.routers import auth, dashboard, knowledge, settings, training
+from app.seed_kb import seed_kb_from_folder
 from app.services.llm_config import get_effective_llm_config
 
 
 Base.metadata.create_all(bind=engine)
 ensure_runtime_schema()
+
+# Auto-import kb/ folder on first startup
+try:
+    _db = SessionLocal()
+    _count = seed_kb_from_folder(_db)
+    if _count:
+        print(f"seed_kb: imported {_count} documents from kb/ folder")
+finally:
+    _db.close()
 
 app = FastAPI(title="AI 销售陪练 MVP API")
 
