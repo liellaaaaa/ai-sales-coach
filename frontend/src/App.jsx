@@ -455,7 +455,7 @@ function App() {
                     }}
                   >
                     <span>模型配置</span>
-                    <small>MiniMax M3 / API Key</small>
+                    <small>DeepSeek V4 Flash / API Key</small>
                   </button>
                 )}
                 <button className="account-row danger" type="button" role="menuitem" onClick={logout}>
@@ -739,13 +739,13 @@ function ModelConfig({ runtimeStatus, onSaved, onError }) {
         <div className="intro">
           <span className="eyebrow">系统设置</span>
           <h3>模型配置</h3>
-          <p>配置 MiniMax 中国版接口。页面只保存运行时配置，不回显完整 API Key。</p>
+          <p>配置 DeepSeek 兼容接口。页面只保存运行时配置，不回显完整 API Key。</p>
         </div>
         <div className="profile-identity-card model-status-card">
           <span className={`model-status-dot ${runtimeStatus?.llm_mode === "llm" ? "is-live" : ""}`} />
           <div>
             <b>{runtimeStatus?.llm_mode === "llm" ? "已接入模型" : "模拟模式"}</b>
-            <p>{config?.model_id || "MiniMax-M3"}</p>
+            <p>{config?.model_id || "deepseek-v4-flash"}</p>
           </div>
         </div>
       </div>
@@ -754,7 +754,7 @@ function ModelConfig({ runtimeStatus, onSaved, onError }) {
         <form className="profile-card profile-editor" onSubmit={submit}>
           <header>
             <div>
-              <span className="section-kicker">MiniMax 中国</span>
+              <span className="section-kicker">DeepSeek</span>
               <h4>连接配置</h4>
             </div>
             <span className="profile-status-pill">{config?.llm_mode === "llm" ? "已启用" : "待配置"}</span>
@@ -770,12 +770,12 @@ function ModelConfig({ runtimeStatus, onSaved, onError }) {
                     type="password"
                     value={form.api_key}
                     onChange={(event) => setForm({ ...form, api_key: event.target.value, clear_api_key: false })}
-                    placeholder={config?.has_api_key ? `${config.api_key_masked}，留空则不修改` : "输入 MiniMax API Key"}
+                    placeholder={config?.has_api_key ? `${config.api_key_masked}，留空则不修改` : "输入 DeepSeek API Key"}
                   />
                 </label>
                 <label className="profile-field full">
                   <span>Base URL</span>
-                  <input value={form.base_url} readOnly title="当前仅支持 MiniMax 中国版默认地址" />
+                  <input value={form.base_url} readOnly title="当前仅支持白名单内的接口地址" />
                 </label>
                 <label className="profile-field">
                   <span>模型名称</span>
