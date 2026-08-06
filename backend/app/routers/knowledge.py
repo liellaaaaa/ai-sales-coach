@@ -9,7 +9,7 @@ from app.models import KnowledgeDocument, KnowledgeDocumentVersion, KnowledgeIte
 from app.schemas import KnowledgeChunkPageOut, KnowledgeDocumentOut, KnowledgeDocumentUpdateIn, KnowledgeIn, KnowledgeOut
 from app.services.auth import current_user, require_roles
 from app.services.document_parser import extract_text, parse_document
-from app.services.llm import MiniMaxClient
+from app.services.llm import LLMClient
 
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
@@ -251,7 +251,7 @@ async def analyze_document(
     file_name = file.filename or "未命名文档.txt"
     parsed = parse_document(file_name, raw, source_type, "通用", "通用")
     fallback = _document_analysis_fallback(file_name, source_type, parsed)
-    result = await MiniMaxClient().analyze_document_metadata(file_name, parsed.raw_text, fallback)
+    result = await LLMClient().analyze_document_metadata(file_name, parsed.raw_text, fallback)
     result["file_name"] = file_name
     return result
 

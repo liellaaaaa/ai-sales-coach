@@ -46,7 +46,7 @@ def _customer_profile_text(session: TrainingSession) -> str:
     return f"客户难度：{difficulty}；客户性格：{personality}；核心关注：{concern}"
 
 
-class MiniMaxClient:
+class LLMClient:
     async def customer_reply(
         self,
         session: TrainingSession,

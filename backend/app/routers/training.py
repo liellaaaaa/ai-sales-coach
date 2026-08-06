@@ -15,7 +15,7 @@ from app.schemas import (
 )
 from app.services.auth import current_user
 from app.services.knowledge import find_relevant_knowledge
-from app.services.llm import MiniMaxClient
+from app.services.llm import LLMClient
 
 
 router = APIRouter(prefix="/training", tags=["training"])
@@ -37,7 +37,7 @@ async def start_session(payload: TrainingStartIn, db: Session = Depends(get_db),
     db.refresh(session)
 
     knowledge = find_relevant_knowledge(db, session)
-    first_reply = await MiniMaxClient().customer_reply(session, [], knowledge)
+    first_reply = await LLMClient().customer_reply(session, [], knowledge)
     db.add(TrainingMessage(session_id=session.id, role="customer", content=first_reply))
     db.commit()
     db.refresh(session)
@@ -98,7 +98,7 @@ async def retry_session(session_id: int, db: Session = Depends(get_db), user: Us
     db.refresh(session)
 
     knowledge = find_relevant_knowledge(db, session)
-    first_reply = await MiniMaxClient().customer_reply(session, [], knowledge)
+    first_reply = await LLMClient().customer_reply(session, [], knowledge)
     db.add(TrainingMessage(session_id=session.id, role="customer", content=first_reply))
     db.commit()
     db.refresh(session)
@@ -123,7 +123,7 @@ async def send_message(
     db.refresh(session)
 
     knowledge = find_relevant_knowledge(db, session)
-    reply = await MiniMaxClient().customer_reply(session, session.messages, knowledge)
+    reply = await LLMClient().customer_reply(session, session.messages, knowledge)
     message = TrainingMessage(session_id=session.id, role="customer", content=reply)
     db.add(message)
     db.commit()
@@ -139,7 +139,7 @@ async def suggest_reply(session_id: int, db: Session = Depends(get_db), user: Us
     if session.status == "completed":
         raise HTTPException(status_code=400, detail="训练已完成")
     knowledge = find_relevant_knowledge(db, session)
-    content = await MiniMaxClient().suggested_reply(session, session.messages, knowledge)
+    content = await LLMClient().suggested_reply(session, session.messages, knowledge)
     return SuggestionOut(content=content)
 
 
@@ -152,7 +152,7 @@ async def finish_session(session_id: int, db: Session = Depends(get_db), user: U
         return session.report
 
     knowledge = find_relevant_knowledge(db, session)
-    data = await MiniMaxClient().score_report(session, session.messages, knowledge)
+    data = await LLMClient().score_report(session, session.messages, knowledge)
     report = TrainingReport(
         session_id=session.id,
         overall_score=int(data.get("overall_score", 70)),

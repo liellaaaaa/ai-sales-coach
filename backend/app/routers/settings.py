@@ -5,7 +5,7 @@ from app.db.session import get_db
 from app.models import User
 from app.schemas import LLMConfigOut, LLMConfigUpdateIn, LLMConnectionTestOut
 from app.services.auth import require_roles
-from app.services.llm import MiniMaxClient
+from app.services.llm import LLMClient
 from app.services.llm_config import config_to_public, get_effective_llm_config, save_llm_config
 
 
@@ -40,4 +40,4 @@ def update_llm_config(
 @router.post("/llm/test", response_model=LLMConnectionTestOut)
 async def test_llm_connection(db: Session = Depends(get_db), _: User = Depends(require_roles("admin"))):
     config = get_effective_llm_config(db)
-    return await MiniMaxClient().test_connection(config)
+    return await LLMClient().test_connection(config)

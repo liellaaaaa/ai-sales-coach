@@ -1,9 +1,16 @@
 import os
 import tempfile
+from pathlib import Path
 
 db_path = os.path.join(tempfile.gettempdir(), "sales_coach_smoke.db")
 os.environ["SALES_COACH_DATABASE_URL"] = f"sqlite:///{db_path}"
-os.environ["SALES_COACH_MINIMAX_API_KEY"] = ""
+os.environ["SALES_COACH_DEEPSEEK_API_KEY"] = ""
+os.environ["SALES_COACH_DEEPSEEK_GROUP_ID"] = ""
+
+import app.seed_kb
+
+# 隔离本机 kb/ 业务资料，保证 smoke 断言不受真实知识库内容影响
+app.seed_kb.KB_DIR = Path(tempfile.gettempdir()) / "sales_coach_smoke_kb_empty"
 
 from fastapi.testclient import TestClient
 
@@ -14,7 +21,7 @@ from app.models import LLMConfig, TrainingSession, User
 from app.seed import main as seed_main
 from app.services.auth import hash_password
 from app.services.knowledge import find_relevant_knowledge
-from app.services.llm import MiniMaxClient, _strip_thinking
+from app.services.llm import LLMClient, _strip_thinking
 
 
 def login(client: TestClient, username: str) -> dict:
@@ -65,7 +72,7 @@ def assert_document_write_denied_for_sales(client: TestClient, headers: dict):
 
 
 def assert_openai_compatible_messages_are_sendable():
-    client = MiniMaxClient()
+    client = LLMClient()
     messages = client._openai_messages([{"sender_type": "BOT", "text": "system prompt"}])
     assert [message["role"] for message in messages] == ["system", "user"]
     assert messages[-1]["content"]
@@ -336,8 +343,8 @@ def run():
         assert config.api_key == "sk-test-secret-1234"
         return {"ok": True, "message": "模型连接成功", "model_id": config.model_id, "latency_ms": 12}
 
-    original_connection_test = getattr(MiniMaxClient, "test_connection", None)
-    MiniMaxClient.test_connection = fake_connection_test
+    original_connection_test = getattr(LLMClient, "test_connection", None)
+    LLMClient.test_connection = fake_connection_test
     try:
         response = client.post("/api/settings/llm/test", headers=sales_headers)
         assert response.status_code == 403, response.text
@@ -350,9 +357,9 @@ def run():
         assert "sk-test-secret-1234" not in response.text
     finally:
         if original_connection_test is None:
-            delattr(MiniMaxClient, "test_connection")
+            delattr(LLMClient, "test_connection")
         else:
-            MiniMaxClient.test_connection = original_connection_test
+            LLMClient.test_connection = original_connection_test
 
     response = client.patch(
         "/api/settings/llm",
@@ -360,8 +367,8 @@ def run():
         json={
             "api_key": "sk-test-secret-1234",
             "base_url": "https://example.invalid/v1",
-            "model_name": "MiniMax M3",
-            "model_id": "MiniMax-M3",
+            "model_name": "Other Provider Model",
+            "model_id": "other-provider-model",
         },
     )
     assert response.status_code == 400, response.text
