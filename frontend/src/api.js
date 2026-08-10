@@ -32,3 +32,27 @@ export async function apiForm(path, formData) {
   }
   return response.json();
 }
+
+export async function apiAudio(path, body) {
+  const token = localStorage.getItem("salesCoachToken");
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    let detail = "请求失败";
+    try {
+      const parsed = await response.json();
+      detail = parsed.detail || detail;
+    } catch {
+      const text = await response.text().catch(() => "");
+      if (text) detail = text;
+    }
+    throw new Error(detail);
+  }
+  return response.blob();
+}
