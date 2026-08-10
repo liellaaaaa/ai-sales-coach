@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { api, apiForm } from "./api";
+import { api, apiAudio, apiForm } from "./api";
+import { AudioPlayer } from "./audio";
+import { AutoReadToggle, MicButton, PlayButton } from "./voice";
 import "./styles.css";
 
 const TRAINING_TYPES = ["客户情景陪练", "商机推进教练"];
@@ -534,7 +536,7 @@ function App() {
           {isMockRuntime(runtimeStatus) && <RuntimeModeNotice />}
           {error && <div className="toast">{error}</div>}
           {view === "start" && <StartTraining onError={setError} onStarted={startSession} recordCount={sessions.length} />}
-          {view === "chat" && <Chat session={session} onError={setError} onSession={setSession} onReset={resetCurrentChat} onReport={(nextReport) => { setReport(withSessionMeta(nextReport, session)); setView("report"); loadAll(); }} />}
+          {view === "chat" && <Chat session={session} voiceEnabled={runtimeStatus?.voice_configured === true} onError={setError} onSession={setSession} onReset={resetCurrentChat} onReport={(nextReport) => { setReport(withSessionMeta(nextReport, session)); setView("report"); loadAll(); }} />}
           {view === "report" && <Report report={report} />}
           {view === "history" && (
             <History
@@ -1169,17 +1171,64 @@ function StartTraining({ onStarted, onError, recordCount }) {
   );
 }
 
-function Chat({ session, onSession, onReport, onError, onReset }) {
+function Chat({ session, onSession, onReport, onError, onReset, voiceEnabled }) {
   const [text, setText] = useState("");
   const [showExample, setShowExample] = useState(false);
   const [suggestion, setSuggestion] = useState(null);
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
+  const [isVoiceRecording, setIsVoiceRecording] = useState(false);
+  const [autoRead, setAutoRead] = useState(() => localStorage.getItem("salesCoachAutoRead") !== "off");
+  const [playback, setPlayback] = useState({ key: "", status: "idle" });
+  const playerRef = useRef(null);
+  const audioCache = useRef(new Map());
   const inputRef = useRef(null);
   const suggestionRef = useRef(null);
   const salesTurns = useMemo(() => session?.messages?.filter((msg) => msg.role === "sales").length || 0, [session]);
   const exampleReply = standardReplies[session?.goal] || standardReplies["价格异议"];
+
+  useEffect(() => {
+    playerRef.current = new AudioPlayer();
+    audioCache.current = new Map();
+    setPlayback({ key: "", status: "idle" });
+    return () => {
+      playerRef.current?.dispose();
+    };
+  }, [session?.id]);
+
+  function toggleAutoRead(next) {
+    setAutoRead(next);
+    localStorage.setItem("salesCoachAutoRead", next ? "on" : "off");
+  }
+
+  function messageCacheKey(message, index) {
+    return `${session.id}:${message.id ?? index}`;
+  }
+
+  async function speakMessage(message, index) {
+    if (!playerRef.current) return;
+    const key = messageCacheKey(message, index);
+    if (playback.key === key && playback.status === "playing") {
+      playerRef.current.stop();
+      setPlayback({ key: "", status: "idle" });
+      return;
+    }
+    try {
+      let blob = audioCache.current.get(key);
+      if (!blob) {
+        setPlayback({ key, status: "loading" });
+        blob = await apiAudio("/voice/speech", { text: (message.content || "").trim() });
+        audioCache.current.set(key, blob);
+      }
+      setPlayback({ key, status: "playing" });
+      playerRef.current.playBlob(blob, () => {
+        setPlayback((current) => (current.key === key ? { key: "", status: "idle" } : current));
+      });
+    } catch {
+      setPlayback({ key, status: "error" });
+    }
+  }
 
   useEffect(() => {
     if (!showExample) return undefined;
@@ -1193,17 +1242,24 @@ function Chat({ session, onSession, onReport, onError, onReset }) {
 
   if (!session) return <Empty title="还没有训练" text="先从开始训练创建一次会话。" />;
 
-  async function send() {
-    if (!text.trim() || isSending || isFinishing) return;
-    const content = text.trim();
+  async function send(forcedContent) {
+    const content = (forcedContent ?? text).trim();
+    if (!content || isSending || isFinishing) return;
     setText("");
     setSuggestion(null);
     setShowExample(false);
     setIsSending(true);
+    playerRef.current?.stop();
+    setPlayback({ key: "", status: "idle" });
     onSession({ ...session, messages: [...session.messages, { role: "sales", content }] });
     try {
       await api(`/training/sessions/${session.id}/messages`, { method: "POST", body: JSON.stringify({ content }) });
-      onSession(await api(`/training/sessions/${session.id}`));
+      const updated = await api(`/training/sessions/${session.id}`);
+      onSession(updated);
+      if (voiceEnabled && autoRead) {
+        const lastIndex = updated.messages.map((message) => message.role).lastIndexOf("customer");
+        if (lastIndex >= 0) speakMessage(updated.messages[lastIndex], lastIndex);
+      }
     } catch (err) {
       onError(err.message);
     } finally {
@@ -1245,13 +1301,25 @@ function Chat({ session, onSession, onReport, onError, onReset }) {
       <div className="chat">
         <div className="chat-log">
           {session.messages.map((msg, index) => (
-            <div key={index} className={`msg ${msg.role === "sales" ? "sales" : ""}`}><span className="who">{msg.role === "sales" ? "业务员" : "客户"}</span><div className="bubble">{msg.content}</div></div>
+            <div key={msg.id ?? index} className={`msg ${msg.role === "sales" ? "sales" : ""}`}>
+              <span className="who">{msg.role === "sales" ? "业务员" : "客户"}</span>
+              <div className="bubble-row">
+                <div className="bubble">{msg.content}</div>
+                {voiceEnabled && msg.role === "customer" && (
+                  <PlayButton
+                    status={playback.key === messageCacheKey(msg, index) ? playback.status : "idle"}
+                    onClick={() => speakMessage(msg, index)}
+                  />
+                )}
+              </div>
+            </div>
           ))}
           {isSending && <CustomerReplyWaitingPanel />}
         </div>
         <div className="chat-actions">
           <div className="composer-tools">
             <span>{isSending ? "客户正在思考你的回应..." : salesTurns >= 3 ? "已满足验收轮次，可以进入复盘。" : "建议至少完成 3 轮回应。"}</span>
+            {voiceEnabled && <AutoReadToggle enabled={autoRead} onChange={toggleAutoRead} />}
             <div ref={suggestionRef} className={`standard-preview ai-suggestion ${showExample ? "open" : ""}`}>
               <button type="button" onClick={toggleSuggestion} aria-expanded={showExample} disabled={isSending || isFinishing}>{isSuggesting ? "生成中" : "AI推荐回复"}</button>
               <div className="standard-popover ai-suggestion-popover">
@@ -1270,9 +1338,17 @@ function Chat({ session, onSession, onReport, onError, onReset }) {
               </div>
             </div>
           </div>
-          <div className="composer-row">
-            <input ref={inputRef} value={text} disabled={isSending || isFinishing} onChange={(e) => setText(e.target.value)} placeholder={isSending ? "等待客户回复中" : "输入你的回应"} onKeyDown={(e) => { if (e.key === "Enter") send(); }} />
-            <button className="send-button" disabled={!text.trim() || isSending || isFinishing} onClick={send}>{isSending ? "发送中" : "发送"}</button>
+          <div className={`composer-row ${voiceEnabled ? "has-voice" : ""}`}>
+            {voiceEnabled && (
+              <MicButton
+                disabled={isSending || isFinishing}
+                onError={onError}
+                onRecordingChange={setIsVoiceRecording}
+                onResult={(recognized) => send(recognized)}
+              />
+            )}
+            <input ref={inputRef} value={text} disabled={isSending || isFinishing} onChange={(e) => setText(e.target.value)} placeholder={isSending ? "等待客户回复中" : isVoiceRecording ? "正在录音，再次点击麦克风结束" : "输入你的回应"} onKeyDown={(e) => { if (e.key === "Enter") send(); }} />
+            <button className="send-button" disabled={!text.trim() || isSending || isFinishing} onClick={() => send()}>{isSending ? "发送中" : "发送"}</button>
           </div>
           {isFinishing && <ReportGeneratingPanel salesTurns={salesTurns} />}
         </div>
