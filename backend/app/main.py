@@ -6,6 +6,7 @@ from app.db.migrations import ensure_runtime_schema
 from app.routers import auth, dashboard, knowledge, settings, training
 from app.seed_kb import seed_kb_from_folder
 from app.services.llm_config import get_effective_llm_config
+from app.services.voice import VoiceClient
 
 
 Base.metadata.create_all(bind=engine)
@@ -44,4 +45,5 @@ def health():
         "status": "ok",
         "llm_configured": config.configured,
         "llm_mode": config.mode,
+        "voice_configured": VoiceClient().configured,
     }

@@ -1,3 +1,4 @@
+import base64
 import os
 import tempfile
 from pathlib import Path
@@ -22,6 +23,7 @@ from app.seed import main as seed_main
 from app.services.auth import hash_password
 from app.services.knowledge import find_relevant_knowledge
 from app.services.llm import LLMClient, _strip_thinking
+from app.services.voice import VoiceClient, is_wav_base64
 
 
 def login(client: TestClient, username: str) -> dict:
@@ -279,6 +281,10 @@ def run():
     assert health_body["status"] == "ok"
     assert health_body["llm_configured"] is False
     assert health_body["llm_mode"] == "mock"
+    assert health_body["voice_configured"] is False
+    assert VoiceClient().configured is False
+    assert is_wav_base64(base64.b64encode(b"RIFF\x24\x08\x00\x00WAVEfmt ").decode("ascii")) is True
+    assert is_wav_base64(base64.b64encode(b"OggS not wav at all").decode("ascii")) is False
 
     sales_headers = login(client, "sales")
     admin_headers = login(client, "admin")

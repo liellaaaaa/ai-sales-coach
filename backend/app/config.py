@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     deepseek_base_url: str = ""
     deepseek_group_id: str = ""
     deepseek_model: str = "deepseek-v4-flash"
+    mimo_api_key: str = ""
+    mimo_base_url: str = "https://api.xiaomimimo.com"
+    mimo_asr_model: str = "mimo-v2.5-asr"
+    mimo_tts_model: str = "mimo-v2.5-tts"
 
     class Config:
         env_file = ".env"
