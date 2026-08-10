@@ -159,8 +159,18 @@ class MessageIn(BaseModel):
 
 
 class MessageOut(BaseModel):
+    id: int
     role: str
     content: str
+
+
+class VoiceTranscribeIn(BaseModel):
+    audio_base64: str
+    mime_type: str = "audio/wav"
+
+
+class VoiceSpeechIn(BaseModel):
+    text: str
 
 
 class SuggestionOut(BaseModel):

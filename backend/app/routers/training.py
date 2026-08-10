@@ -128,7 +128,7 @@ async def send_message(
     db.add(message)
     db.commit()
     db.refresh(message)
-    return MessageOut(role=message.role, content=message.content)
+    return MessageOut(id=message.id, role=message.role, content=message.content)
 
 
 @router.post("/sessions/{session_id}/suggestion", response_model=SuggestionOut)

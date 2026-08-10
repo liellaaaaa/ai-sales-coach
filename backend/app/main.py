@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.db.session import Base, SessionLocal, engine
 from app.db.migrations import ensure_runtime_schema
-from app.routers import auth, dashboard, knowledge, settings, training
+from app.routers import auth, dashboard, knowledge, settings, training, voice
 from app.seed_kb import seed_kb_from_folder
 from app.services.llm_config import get_effective_llm_config
 from app.services.voice import VoiceClient
@@ -36,6 +36,7 @@ app.include_router(knowledge.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
 app.include_router(training.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
+app.include_router(voice.router, prefix="/api")
 
 
 @app.get("/api/health")
