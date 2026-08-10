@@ -24,7 +24,7 @@ from app.seed import main as seed_main
 from app.services.auth import hash_password
 from app.services.knowledge import find_relevant_knowledge
 from app.services.llm import LLMClient, _strip_thinking
-from app.services.voice import VoiceClient, is_wav_base64
+from app.services.voice import TTS_MAX_CHARS, VoiceClient, VoiceError, VoiceTimeoutError, is_wav_base64
 
 
 def login(client: TestClient, username: str) -> dict:
@@ -249,6 +249,7 @@ def start_session(client: TestClient, headers: dict, payload: dict) -> dict:
     body = response.json()
     assert body["messages"], "AI 客户开场不能为空"
     assert body["messages"][0]["role"] == "customer"
+    assert all("id" in message for message in body["messages"])
     assert body["customer_difficulty"] == payload["customer_difficulty"]
     assert body["customer_personality"] == payload["customer_personality"]
     assert body["customer_concern"] == payload["customer_concern"]
@@ -266,6 +267,104 @@ def finish_session(client: TestClient, headers: dict, session_id: int) -> dict:
     assert len(report["scores"]) >= 7
     assert report["citations"]
     return report
+
+
+def fake_wav_base64() -> str:
+    pcm = b"\x00\x01" * 160
+    riff = b"RIFF" + (36 + len(pcm)).to_bytes(4, "little") + b"WAVE"
+    return base64.b64encode(riff + pcm).decode("ascii")
+
+
+def assert_voice_flow(client: TestClient, headers: dict):
+    settings.mimo_api_key = "sk-mimo-test"
+
+    async def fake_transcribe(self, audio_base64, mime_type):
+        assert mime_type == "audio/wav"
+        return "你好，我想了解一下价格。"
+
+    async def fake_synthesize(self, text):
+        captured_tts.append(text)
+        return b"RIFF-fake-wav"
+
+    captured_tts = []
+    original_transcribe = VoiceClient.transcribe
+    original_synthesize = VoiceClient.synthesize
+    VoiceClient.transcribe = fake_transcribe
+    VoiceClient.synthesize = fake_synthesize
+    try:
+        health = client.get("/api/health")
+        assert health.json()["voice_configured"] is True
+
+        # 非 wav（magic number 校验）→ 400
+        response = client.post(
+            "/api/voice/transcribe",
+            headers=headers,
+            json={"audio_base64": base64.b64encode(b"not-a-wav-file").decode("ascii"), "mime_type": "audio/wav"},
+        )
+        assert response.status_code == 400, response.text
+        # mime 不匹配 → 400
+        response = client.post(
+            "/api/voice/transcribe",
+            headers=headers,
+            json={"audio_base64": fake_wav_base64(), "mime_type": "audio/mp3"},
+        )
+        assert response.status_code == 400, response.text
+        # 超大音频 → 413
+        response = client.post(
+            "/api/voice/transcribe",
+            headers=headers,
+            json={"audio_base64": "UklGR" + "A" * (8 * 1024 * 1024), "mime_type": "audio/wav"},
+        )
+        assert response.status_code == 413, response.text
+        # 正常识别
+        response = client.post(
+            "/api/voice/transcribe",
+            headers=headers,
+            json={"audio_base64": fake_wav_base64(), "mime_type": "audio/wav"},
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["text"] == "你好，我想了解一下价格。"
+
+        # 正常合成 → audio/wav 字节流，文本先 trim
+        response = client.post("/api/voice/speech", headers=headers, json={"text": "  价格方面我们可以再谈。 "})
+        assert response.status_code == 200, response.text
+        assert response.headers["content-type"].startswith("audio/wav")
+        assert response.content == b"RIFF-fake-wav"
+        assert captured_tts[-1] == "价格方面我们可以再谈。"
+        # 超 500 字自动截断，不报错
+        response = client.post("/api/voice/speech", headers=headers, json={"text": "长" * 600})
+        assert response.status_code == 200, response.text
+        assert len(captured_tts[-1]) == TTS_MAX_CHARS
+        # 空文本 → 400
+        response = client.post("/api/voice/speech", headers=headers, json={"text": "   "})
+        assert response.status_code == 400, response.text
+    finally:
+        VoiceClient.transcribe = original_transcribe
+        VoiceClient.synthesize = original_synthesize
+
+    # 超时 → 504；其它上游错误 → 502
+    async def timeout_transcribe(self, audio_base64, mime_type):
+        raise VoiceTimeoutError("timeout")
+
+    async def broken_synthesize(self, text):
+        raise VoiceError("boom")
+
+    VoiceClient.transcribe = timeout_transcribe
+    VoiceClient.synthesize = broken_synthesize
+    try:
+        response = client.post(
+            "/api/voice/transcribe",
+            headers=headers,
+            json={"audio_base64": fake_wav_base64(), "mime_type": "audio/wav"},
+        )
+        assert response.status_code == 504, response.text
+        assert "超时" in response.json()["detail"]
+        response = client.post("/api/voice/speech", headers=headers, json={"text": "你好"})
+        assert response.status_code == 502, response.text
+    finally:
+        VoiceClient.transcribe = original_transcribe
+        VoiceClient.synthesize = original_synthesize
+        settings.mimo_api_key = ""
 
 
 def run():
@@ -291,6 +390,18 @@ def run():
     admin_headers = login(client, "admin")
     assert_login_rejected(client, "supervisor")
     assert_login_rejected(client, "trainer")
+
+    response = client.post(
+        "/api/voice/transcribe",
+        json={"audio_base64": fake_wav_base64(), "mime_type": "audio/wav"},
+    )
+    assert response.status_code == 401, response.text
+    response = client.post(
+        "/api/voice/transcribe",
+        headers=sales_headers,
+        json={"audio_base64": fake_wav_base64(), "mime_type": "audio/wav"},
+    )
+    assert response.status_code == 503, response.text
 
     response = client.get("/api/knowledge")
     assert response.status_code == 401, response.text
@@ -432,7 +543,9 @@ def run():
     )
     assert comment_response.status_code == 404, comment_response.text
 
-    print("smoke ok: documents, chunks, retrieval, report")
+    assert_voice_flow(client, sales_headers)
+
+    print("smoke ok: documents, chunks, retrieval, report, voice")
 
 
 if __name__ == "__main__":
