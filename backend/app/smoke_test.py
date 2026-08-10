@@ -7,6 +7,7 @@ db_path = os.path.join(tempfile.gettempdir(), "sales_coach_smoke.db")
 os.environ["SALES_COACH_DATABASE_URL"] = f"sqlite:///{db_path}"
 os.environ["SALES_COACH_DEEPSEEK_API_KEY"] = ""
 os.environ["SALES_COACH_DEEPSEEK_GROUP_ID"] = ""
+os.environ["SALES_COACH_MIMO_API_KEY"] = ""
 
 import app.seed_kb
 

@@ -18,16 +18,16 @@ class VoiceError(Exception):
     """上游语音服务调用失败（非超时）。"""
 
 
-class VoiceTimeoutError(Exception):
+class VoiceTimeoutError(VoiceError):
     """上游语音服务响应超时。"""
 
 
 def is_wav_base64(audio_base64: str) -> bool:
     try:
-        head = base64.b64decode(audio_base64[:8], validate=True)
+        head = base64.b64decode(audio_base64[:16], validate=True)
     except (binascii.Error, ValueError):
         return False
-    return head.startswith(b"RIFF")
+    return head.startswith(b"RIFF") and head[8:12] == b"WAVE"
 
 
 class VoiceClient:
@@ -50,10 +50,18 @@ class VoiceClient:
             async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=15.0)) as client:
                 response = await client.post(self._url(), json=payload, headers=self._headers())
                 response.raise_for_status()
-                return response.json()
+                try:
+                    body = response.json()
+                except ValueError as exc:
+                    raise VoiceError("语音服务返回了无法解析的响应") from exc
+                if not isinstance(body, dict):
+                    raise VoiceError("语音服务响应格式异常")
+                return body
         except httpx.TimeoutException as exc:
+            logger.warning("MiMo 语音服务响应超时：%s", exc)
             raise VoiceTimeoutError(str(exc)) from exc
         except httpx.HTTPError as exc:
+            logger.warning("MiMo 语音服务调用失败：%s", exc)
             raise VoiceError(str(exc)) from exc
 
     async def transcribe(self, audio_base64: str, mime_type: str) -> str:
