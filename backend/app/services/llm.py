@@ -11,6 +11,19 @@ from app.services.llm_config import EffectiveLLMConfig, get_effective_llm_config
 logger = logging.getLogger(__name__)
 
 
+class _DictObj:
+    """将 dict 包装为支持属性访问的对象，用于 SSE 快照。"""
+
+    def __init__(self, d: dict):
+        self._d = d
+
+    def __getattr__(self, name: str):
+        try:
+            return self._d[name]
+        except KeyError:
+            raise AttributeError(name)
+
+
 def _strip_thinking(text: str) -> str:
     stripped = (text or "").strip()
     while stripped.startswith("<think>"):
@@ -86,11 +99,14 @@ class LLMClient:
 
     async def customer_reply_stream(
         self,
-        session: TrainingSession,
-        messages: list[TrainingMessage],
-        knowledge: list[KnowledgeItem],
+        session,
+        messages,
+        knowledge,
     ) -> AsyncGenerator[str, None]:
-        """流式生成客户回复，逐 chunk yield 文本片段。"""
+        """流式生成客户回复，逐 chunk yield 文本片段。支持 session 为 dict 或 TrainingSession。"""
+        if isinstance(session, dict):
+            session = _DictObj(session)
+
         config = get_effective_llm_config()
         if not self._configured(config):
             yield self._mock_customer_reply(session, messages)
@@ -112,8 +128,10 @@ class LLMClient:
         )
         history = [{"sender_type": "BOT", "text": prompt}]
         for msg in messages[-8:]:
-            sender = "USER" if msg.role == "sales" else "BOT"
-            history.append({"sender_type": sender, "text": msg.content})
+            role = msg.get("role") if isinstance(msg, dict) else msg.role
+            content = msg.get("content") if isinstance(msg, dict) else msg.content
+            sender = "USER" if role == "sales" else "BOT"
+            history.append({"sender_type": sender, "text": content})
         try:
             async for chunk in self._chat_stream(history, config, max_tokens=1024):
                 yield chunk

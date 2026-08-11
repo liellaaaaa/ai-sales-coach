@@ -117,6 +117,9 @@ export async function apiStream(path, body, handlers = {}) {
           case "tts_error":
             console.warn("TTS error:", parsed.error);
             break;
+          case "error":
+            handlers.onError?.(parsed.error || "流式处理异常");
+            break;
           case "complete":
             handlers.onComplete?.();
             break;

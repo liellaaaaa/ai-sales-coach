@@ -151,50 +151,85 @@ async def stream_message(
     if session.status == "completed":
         raise HTTPException(status_code=400, detail="训练已完成")
 
+    # 在请求作用域内保存业务员消息
     db.add(TrainingMessage(session_id=session.id, role="sales", content=payload.content))
     db.commit()
     db.refresh(session)
 
+    # 快照会话数据，避免生成器持有请求作用域的 db 对象
+    session_id_val = session.id
+    session_snapshot = {
+        "id": session.id,
+        "owner_id": session.owner_id,
+        "training_type": session.training_type,
+        "stage": session.stage,
+        "goal": session.goal,
+        "customer_name": session.customer_name,
+        "customer_type": session.customer_type,
+        "customer_difficulty": getattr(session, "customer_difficulty", "") or "标准",
+        "customer_personality": getattr(session, "customer_personality", "") or "谨慎型",
+        "customer_concern": getattr(session, "customer_concern", "") or "价格",
+        "template_id": session.template_id or "",
+        "background": session.background,
+    }
+    messages_snapshot = [{"role": m.role, "content": m.content} for m in session.messages]
     knowledge = find_relevant_knowledge(db, session)
+    knowledge_snapshot = knowledge  # list of KnowledgeItem objects, read-only
+
     llm = LLMClient()
     voice = VoiceClient()
 
     async def event_stream():
-        collected_text = []
+        import base64 as _b64
+        from app.db.session import SessionLocal
 
-        # Phase 1: 流式推送 LLM 文字
-        async for chunk in llm.customer_reply_stream(session, session.messages, knowledge):
-            collected_text.append(chunk)
-            yield f"event: token\ndata: {json.dumps({'text': chunk}, ensure_ascii=False)}\n\n"
+        gen_db = SessionLocal()
+        try:
+            collected_text = []
 
-        full_text = "".join(collected_text).strip()
+            # Phase 1: 流式推送 LLM 文字
+            async for chunk in llm.customer_reply_stream(
+                session_snapshot, messages_snapshot, knowledge_snapshot
+            ):
+                collected_text.append(chunk)
+                yield f"event: token\ndata: {json.dumps({'text': chunk}, ensure_ascii=False)}\n\n"
 
-        # 将完整回复存入数据库
-        message = TrainingMessage(session_id=session.id, role="customer", content=full_text)
-        db.add(message)
-        db.commit()
-        db.refresh(message)
-        yield f"event: done\ndata: {json.dumps({'id': message.id, 'content': full_text}, ensure_ascii=False)}\n\n"
+            full_text = "".join(collected_text).strip()
 
-        # Phase 2: 流式推送 TTS 音频
-        if voice.configured and full_text:
-            style = get_tts_style(
-                template_id=session.template_id or "",
-                difficulty=getattr(session, "customer_difficulty", "") or "标准",
-                personality=getattr(session, "customer_personality", "") or "谨慎型",
-            )
-            try:
-                async for pcm_chunk in voice.synthesize_stream(full_text, style):
-                    import base64 as _b64
+            # 将完整回复存入数据库（使用独立会话）
+            message = TrainingMessage(session_id=session_id_val, role="customer", content=full_text)
+            gen_db.add(message)
+            gen_db.commit()
+            gen_db.refresh(message)
+            yield f"event: done\ndata: {json.dumps({'id': message.id, 'content': full_text}, ensure_ascii=False)}\n\n"
 
-                    yield f"event: audio\ndata: {json.dumps({'data': _b64.b64encode(pcm_chunk).decode()})}\n\n"
-            except (VoiceTimeoutError, VoiceError) as exc:
-                logger.warning("TTS 流式合成失败：%s", exc)
-                yield f"event: tts_error\ndata: {json.dumps({'error': str(exc)}, ensure_ascii=False)}\n\n"
+            # Phase 2: 流式推送 TTS 音频
+            if voice.configured and full_text:
+                style = get_tts_style(
+                    template_id=session_snapshot["template_id"],
+                    difficulty=session_snapshot["customer_difficulty"],
+                    personality=session_snapshot["customer_personality"],
+                )
+                try:
+                    async for pcm_chunk in voice.synthesize_stream(full_text, style):
+                        yield f"event: audio\ndata: {json.dumps({'data': _b64.b64encode(pcm_chunk).decode()})}\n\n"
+                except (VoiceTimeoutError, VoiceError) as exc:
+                    logger.warning("TTS 流式合成失败：%s", exc)
+                    yield f"event: tts_error\ndata: {json.dumps({'error': str(exc)}, ensure_ascii=False)}\n\n"
 
-        yield "event: complete\ndata: {}\n\n"
+            yield "event: complete\ndata: {}\n\n"
+        except Exception as exc:
+            logger.exception("流式端点异常")
+            yield f"event: error\ndata: {json.dumps({'error': str(exc)}, ensure_ascii=False)}\n\n"
+            yield "event: complete\ndata: {}\n\n"
+        finally:
+            gen_db.close()
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/sessions/{session_id}/suggestion", response_model=SuggestionOut)

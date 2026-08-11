@@ -198,15 +198,13 @@ export default function Chat({ session, onSession, onReport, onError, onReset, v
     onSession({ ...session, messages: [...session.messages, { role: "sales", content }] });
 
     try {
-      let finalMessage = null;
       let hasAudio = false;
 
       await apiStream(`/training/sessions/${session.id}/stream`, { content }, {
-        onToken(text) {
-          setStreamingText((prev) => prev + text);
+        onToken(t) {
+          setStreamingText((prev) => prev + t);
         },
-        onDone(msg) {
-          finalMessage = msg;
+        onDone() {
           setStreamingActive(false);
         },
         onAudio(pcmBase64) {
@@ -232,9 +230,21 @@ export default function Chat({ session, onSession, onReport, onError, onReset, v
       setStreamingText("");
       setStreamingActive(false);
     } catch (err) {
-      onError(err.message);
+      // 流式失败时降级到旧的非流式 API
+      console.warn("流式端点失败，降级到非流式:", err.message);
       setStreamingText("");
       setStreamingActive(false);
+      try {
+        await api(`/training/sessions/${session.id}/messages`, { method: "POST", body: JSON.stringify({ content }) });
+        const updated = await api(`/training/sessions/${session.id}`);
+        onSession(updated);
+        if (voiceEnabled && autoRead) {
+          const lastIndex = updated.messages.map((m) => m.role).lastIndexOf("customer");
+          if (lastIndex >= 0) speakMessage(updated.messages[lastIndex], lastIndex);
+        }
+      } catch (fallbackErr) {
+        onError(fallbackErr.message);
+      }
     } finally {
       setIsSending(false);
     }
