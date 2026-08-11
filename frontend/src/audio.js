@@ -224,3 +224,121 @@ export function blobToBase64(blob) {
     reader.readAsDataURL(blob);
   });
 }
+
+const PCM_SAMPLE_RATE = 24000;
+
+/** 将 base64 编码的 PCM16LE 数据解码为 Float32Array */
+function decodePcm16Base64(b64) {
+  const raw = atob(b64);
+  const int16 = new Int16Array(raw.length / 2);
+  for (let i = 0; i < int16.length; i++) {
+    const lo = raw.charCodeAt(i * 2);
+    const hi = raw.charCodeAt(i * 2 + 1);
+    int16[i] = (hi << 8) | lo;
+  }
+  const float32 = new Float32Array(int16.length);
+  for (let i = 0; i < int16.length; i++) {
+    float32[i] = int16[i] / 32768;
+  }
+  return float32;
+}
+
+/**
+ * PCM16 流式播放器：接收 base64 编码的 PCM16 块，通过 Web Audio API 无缝拼接播放。
+ */
+export class PCMStreamPlayer {
+  constructor() {
+    this.ctx = null;
+    this.nextTime = 0;
+    this.sources = [];
+    this.playing = false;
+    this.onEnded = null;
+    this._endedTimer = null;
+  }
+
+  _ensureContext() {
+    if (!this.ctx || this.ctx.state === "closed") {
+      this.ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: PCM_SAMPLE_RATE });
+    }
+    if (this.ctx.state === "suspended") {
+      this.ctx.resume();
+    }
+    return this.ctx;
+  }
+
+  /** 追加一个 base64 PCM16 块并调度播放 */
+  appendChunk(b64Data) {
+    const ctx = this._ensureContext();
+    const samples = decodePcm16Base64(b64Data);
+    if (samples.length === 0) return;
+
+    const buffer = ctx.createBuffer(1, samples.length, PCM_SAMPLE_RATE);
+    buffer.getChannelData(0).set(samples);
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+
+    const now = ctx.currentTime;
+    if (this.nextTime < now) {
+      this.nextTime = now;
+    }
+    source.start(this.nextTime);
+    this.nextTime += buffer.duration;
+    this.sources.push(source);
+
+    source.onended = () => {
+      const idx = this.sources.indexOf(source);
+      if (idx !== -1) this.sources.splice(idx, 1);
+      this._checkAllEnded();
+    };
+
+    this.playing = true;
+    // 清除之前的结束检测定时器
+    if (this._endedTimer) {
+      clearTimeout(this._endedTimer);
+      this._endedTimer = null;
+    }
+  }
+
+  /** 标记流结束，等待最后的 buffer 播完 */
+  markStreamEnd() {
+    // 给最后的 buffer 留出播放时间
+    const remaining = this.nextTime - (this.ctx ? this.ctx.currentTime : 0);
+    const waitMs = Math.max(remaining * 1000, 100);
+    this._endedTimer = setTimeout(() => this._checkAllEnded(), waitMs + 200);
+  }
+
+  _checkAllEnded() {
+    if (this.sources.length === 0 && this.playing) {
+      this.playing = false;
+      if (this._endedTimer) {
+        clearTimeout(this._endedTimer);
+        this._endedTimer = null;
+      }
+      this.onEnded?.();
+    }
+  }
+
+  /** 停止播放 */
+  stop() {
+    this.playing = false;
+    if (this._endedTimer) {
+      clearTimeout(this._endedTimer);
+      this._endedTimer = null;
+    }
+    for (const source of this.sources) {
+      try { source.stop(); } catch { /* already stopped */ }
+    }
+    this.sources = [];
+    this.nextTime = 0;
+  }
+
+  dispose() {
+    this.stop();
+    if (this.ctx && this.ctx.state !== "closed") {
+      this.ctx.close();
+    }
+    this.ctx = null;
+  }
+}

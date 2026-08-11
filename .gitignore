@@ -57,6 +57,7 @@ temp/
 # IDE and OS
 .vscode/
 .idea/
+.mimocode/
 *.swp
 *.swo
 .DS_Store

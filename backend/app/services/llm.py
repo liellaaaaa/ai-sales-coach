@@ -1,7 +1,7 @@
 import json
 import logging
 import time
-from typing import Any
+from typing import Any, AsyncGenerator
 
 import httpx
 
@@ -83,6 +83,42 @@ class LLMClient:
         except httpx.HTTPError:
             data = ""
         return data or self._mock_customer_reply(session, messages)
+
+    async def customer_reply_stream(
+        self,
+        session: TrainingSession,
+        messages: list[TrainingMessage],
+        knowledge: list[KnowledgeItem],
+    ) -> AsyncGenerator[str, None]:
+        """流式生成客户回复，逐 chunk yield 文本片段。"""
+        config = get_effective_llm_config()
+        if not self._configured(config):
+            yield self._mock_customer_reply(session, messages)
+            return
+
+        prompt = (
+            "# 角色\n"
+            "你是客户，不是业务员。你正在和一家供应商的业务员对话。\n"
+            "你只能以客户身份说话，绝对不要替业务员回答、不要帮业务员出主意、不要说业务员会说的话。\n"
+            "不要轻易被说服，要围绕客户背景、商机阶段和训练目标持续追问、施压、提条件。\n"
+            "每次回复控制在 80 字以内，像真实客户自然说话。不要输出编号、不要分点、不要解释。\n\n"
+            "# 客户画像\n"
+            f"{_customer_profile_text(session)}\n"
+            f"客户公司：{session.customer_name} / {session.customer_type}\n"
+            f"训练类型：{session.training_type}\n商机阶段：{session.stage}\n训练目标：{session.goal}\n"
+            f"背景：{session.background}\n\n"
+            "# 知识库（仅供你了解产品信息，不要在回复中引用来源）\n"
+            f"{_knowledge_text(knowledge)}"
+        )
+        history = [{"sender_type": "BOT", "text": prompt}]
+        for msg in messages[-8:]:
+            sender = "USER" if msg.role == "sales" else "BOT"
+            history.append({"sender_type": sender, "text": msg.content})
+        try:
+            async for chunk in self._chat_stream(history, config, max_tokens=1024):
+                yield chunk
+        except httpx.HTTPError:
+            yield self._mock_customer_reply(session, messages)
 
     async def score_report(
         self,
@@ -380,6 +416,88 @@ class LLMClient:
             return ""
         message = choices[0].get("message") or {}
         return message.get("content") or message.get("text") or ""
+
+    async def _chat_stream(
+        self, messages: list[dict], config: EffectiveLLMConfig, max_tokens: int = 1024
+    ) -> AsyncGenerator[str, None]:
+        if config.base_url:
+            if "anthropic" in config.base_url.lower():
+                async for chunk in self._chat_stream_anthropic_compatible(messages, config, max_tokens):
+                    yield chunk
+            else:
+                async for chunk in self._chat_stream_openai_compatible(messages, config, max_tokens):
+                    yield chunk
+        else:
+            result = await self._chat_legacy(messages, config, max_tokens)
+            if result:
+                yield result
+
+    async def _chat_stream_openai_compatible(
+        self, messages: list[dict], config: EffectiveLLMConfig, max_tokens: int
+    ) -> AsyncGenerator[str, None]:
+        base_url = config.base_url.rstrip("/")
+        url = base_url if base_url.endswith("/chat/completions") else f"{base_url}/chat/completions"
+        payload = {
+            "model": config.model_id,
+            "messages": self._openai_messages(messages),
+            "max_tokens": max_tokens,
+            "stream": True,
+        }
+        headers = {"Authorization": f"Bearer {config.api_key}", "Content-Type": "application/json"}
+        async with httpx.AsyncClient(timeout=httpx.Timeout(90.0, connect=15.0)) as client:
+            async with client.stream("POST", url, json=payload, headers=headers) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    data = line[6:]
+                    if data.strip() == "[DONE]":
+                        break
+                    try:
+                        obj = json.loads(data)
+                        choices = obj.get("choices") or []
+                        if choices:
+                            delta = choices[0].get("delta") or {}
+                            content = delta.get("content")
+                            if content:
+                                yield content
+                    except (json.JSONDecodeError, KeyError, IndexError):
+                        continue
+
+    async def _chat_stream_anthropic_compatible(
+        self, messages: list[dict], config: EffectiveLLMConfig, max_tokens: int
+    ) -> AsyncGenerator[str, None]:
+        base_url = config.base_url.rstrip("/")
+        url = base_url if base_url.endswith("/messages") else f"{base_url}/v1/messages"
+        system, chat_messages = self._anthropic_messages(messages)
+        payload = {
+            "model": config.model_id,
+            "max_tokens": max_tokens,
+            "messages": chat_messages,
+            "stream": True,
+        }
+        if system:
+            payload["system"] = system
+        headers = {
+            "x-api-key": config.api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+        async with httpx.AsyncClient(timeout=httpx.Timeout(90.0, connect=15.0)) as client:
+            async with client.stream("POST", url, json=payload, headers=headers) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    try:
+                        obj = json.loads(line[6:])
+                        if obj.get("type") == "content_block_delta":
+                            delta = obj.get("delta") or {}
+                            text = delta.get("text")
+                            if text:
+                                yield text
+                    except (json.JSONDecodeError, KeyError):
+                        continue
 
     def _openai_messages(self, messages: list[dict]) -> list[dict]:
         converted = []

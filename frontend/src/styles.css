@@ -6847,3 +6847,23 @@ fieldset:disabled button:hover {
 }
 
 .auto-read-toggle input { accent-color: #0b57d0; }
+
+/* 流式文字打字机效果 */
+.streaming-bubble {
+  position: relative;
+}
+
+.streaming-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: #0b57d0;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: cursor-blink 0.8s step-end infinite;
+}
+
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}

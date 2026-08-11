@@ -1,6 +1,9 @@
+import json
+import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -16,6 +19,9 @@ from app.schemas import (
 from app.services.auth import current_user
 from app.services.knowledge import find_relevant_knowledge
 from app.services.llm import LLMClient
+from app.services.voice import VoiceClient, VoiceError, VoiceTimeoutError, get_tts_style
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/training", tags=["training"])
@@ -129,6 +135,66 @@ async def send_message(
     db.commit()
     db.refresh(message)
     return MessageOut(id=message.id, role=message.role, content=message.content)
+
+
+@router.post("/sessions/{session_id}/stream")
+async def stream_message(
+    session_id: int,
+    payload: MessageIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """SSE 流式端点：逐 token 推送 LLM 文字，完成后流式推送 TTS 音频。"""
+    session = db.get(TrainingSession, session_id)
+    if not session or session.owner_id != user.id:
+        raise HTTPException(status_code=404, detail="训练不存在")
+    if session.status == "completed":
+        raise HTTPException(status_code=400, detail="训练已完成")
+
+    db.add(TrainingMessage(session_id=session.id, role="sales", content=payload.content))
+    db.commit()
+    db.refresh(session)
+
+    knowledge = find_relevant_knowledge(db, session)
+    llm = LLMClient()
+    voice = VoiceClient()
+
+    async def event_stream():
+        collected_text = []
+
+        # Phase 1: 流式推送 LLM 文字
+        async for chunk in llm.customer_reply_stream(session, session.messages, knowledge):
+            collected_text.append(chunk)
+            yield f"event: token\ndata: {json.dumps({'text': chunk}, ensure_ascii=False)}\n\n"
+
+        full_text = "".join(collected_text).strip()
+
+        # 将完整回复存入数据库
+        message = TrainingMessage(session_id=session.id, role="customer", content=full_text)
+        db.add(message)
+        db.commit()
+        db.refresh(message)
+        yield f"event: done\ndata: {json.dumps({'id': message.id, 'content': full_text}, ensure_ascii=False)}\n\n"
+
+        # Phase 2: 流式推送 TTS 音频
+        if voice.configured and full_text:
+            style = get_tts_style(
+                template_id=session.template_id or "",
+                difficulty=getattr(session, "customer_difficulty", "") or "标准",
+                personality=getattr(session, "customer_personality", "") or "谨慎型",
+            )
+            try:
+                async for pcm_chunk in voice.synthesize_stream(full_text, style):
+                    import base64 as _b64
+
+                    yield f"event: audio\ndata: {json.dumps({'data': _b64.b64encode(pcm_chunk).decode()})}\n\n"
+            except (VoiceTimeoutError, VoiceError) as exc:
+                logger.warning("TTS 流式合成失败：%s", exc)
+                yield f"event: tts_error\ndata: {json.dumps({'error': str(exc)}, ensure_ascii=False)}\n\n"
+
+        yield "event: complete\ndata: {}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @router.post("/sessions/{session_id}/suggestion", response_model=SuggestionOut)
