@@ -9,6 +9,7 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 DEFAULT_BASE_URL = "https://api.xiaomimimo.com"
+TOKEN_PLAN_BASE_URL = "https://token-plan-cn.xiaomimimo.com"
 TTS_MAX_CHARS = 500
 MAX_AUDIO_BASE64_LENGTH = 8 * 1024 * 1024
 TTS_STYLE_PROMPT = "用自然、平稳、接近真人客服的语气朗读，语速适中。"
@@ -42,7 +43,9 @@ class VoiceClient:
         }
 
     def _url(self) -> str:
-        base_url = (settings.mimo_base_url or DEFAULT_BASE_URL).rstrip("/")
+        base_url = (settings.mimo_base_url or "").strip().rstrip("/")
+        if not base_url or base_url == DEFAULT_BASE_URL:
+            base_url = TOKEN_PLAN_BASE_URL if (settings.mimo_api_key or "").startswith("tp-") else DEFAULT_BASE_URL
         return f"{base_url}/v1/chat/completions"
 
     async def _post(self, payload: dict) -> dict:
@@ -94,7 +97,7 @@ class VoiceClient:
                 {"role": "user", "content": TTS_STYLE_PROMPT},
                 {"role": "assistant", "content": text},
             ],
-            "audio": {"format": "wav", "voice": "mimo_default"},
+            "audio": {"format": "wav", "voice": settings.mimo_tts_voice or "苏打"},
         }
         body = await self._post(payload)
         choices = body.get("choices") or []

@@ -94,11 +94,18 @@ def get_effective_llm_config(db: Session | None = None) -> EffectiveLLMConfig:
 
     row = db.get(LLMConfig, 1)
     env_model_id = settings.deepseek_model if settings.deepseek_api_key else ""
-    api_key = _decrypt_api_key(row.api_key) if row else settings.deepseek_api_key
+
+    # Database takes priority, but fall back to env vars when DB values are empty
+    db_api_key = _decrypt_api_key(row.api_key) if row else ""
+    api_key = db_api_key or settings.deepseek_api_key
+
+    db_base_url = (row.base_url if row else "").strip() if row else ""
+    raw_base_url = db_base_url or settings.deepseek_base_url
     try:
-        base_url = normalize_base_url(row.base_url if row else settings.deepseek_base_url)
+        base_url = normalize_base_url(raw_base_url)
     except ValueError:
         base_url = DEFAULT_BASE_URL
+
     return EffectiveLLMConfig(
         provider=(row.provider if row else "") or DEFAULT_PROVIDER,
         api_key=api_key,

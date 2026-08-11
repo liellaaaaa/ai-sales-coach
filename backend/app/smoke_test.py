@@ -368,6 +368,10 @@ def assert_voice_flow(client: TestClient, headers: dict):
 
 
 def run():
+    # Save and clear env-based API key so tests run in a clean state
+    _saved_api_key = settings.deepseek_api_key
+    settings.deepseek_api_key = ""
+
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     seed_main()
@@ -503,11 +507,17 @@ def run():
         },
     )
     assert response.status_code == 200, response.text
-    assert response.json()["llm_mode"] == "mock"
+    # DB key cleared but env var still present → falls back to env → "llm"
+    assert response.json()["llm_mode"] == "llm"
+    health = client.get("/api/health")
+    assert health.status_code == 200, health.text
+    assert health.json()["llm_mode"] == "llm"
+
+    # When both DB key and env var are empty → mock mode
+    settings.deepseek_api_key = ""
     health = client.get("/api/health")
     assert health.status_code == 200, health.text
     assert health.json()["llm_mode"] == "mock"
-    settings.deepseek_api_key = ""
 
     assert_document_parsing_flow(client, admin_headers)
 
@@ -544,6 +554,9 @@ def run():
     assert comment_response.status_code == 404, comment_response.text
 
     assert_voice_flow(client, sales_headers)
+
+    # Restore env-based API key
+    settings.deepseek_api_key = _saved_api_key
 
     print("smoke ok: documents, chunks, retrieval, report, voice")
 

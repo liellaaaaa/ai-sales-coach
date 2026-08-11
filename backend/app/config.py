@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     mimo_base_url: str = "https://api.xiaomimimo.com"
     mimo_asr_model: str = "mimo-v2.5-asr"
     mimo_tts_model: str = "mimo-v2.5-tts"
+    mimo_tts_voice: str = "苏打"
 
     class Config:
         env_file = ".env"

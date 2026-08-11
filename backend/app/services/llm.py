@@ -61,15 +61,18 @@ class LLMClient:
             return self._mock_customer_reply(session, messages)
 
         prompt = (
-            "你是一个真实客户，正在和业务员进行销售陪练。"
-            "不要轻易被说服，要围绕客户背景、商机阶段和训练目标持续追问。"
-            "每次回复控制在 80 字以内，像客户自然说话。\n"
-            "客户回复必须体现客户难度、性格和核心关注点，不要过早让步。\n"
-            f"训练类型：{session.training_type}\n商机阶段：{session.stage}\n目标：{session.goal}\n"
-            f"客户：{session.customer_name} / {session.customer_type}\n"
+            "# 角色\n"
+            "你是客户，不是业务员。你正在和一家供应商的业务员对话。\n"
+            "你只能以客户身份说话，绝对不要替业务员回答、不要帮业务员出主意、不要说业务员会说的话。\n"
+            "不要轻易被说服，要围绕客户背景、商机阶段和训练目标持续追问、施压、提条件。\n"
+            "每次回复控制在 80 字以内，像真实客户自然说话。不要输出编号、不要分点、不要解释。\n\n"
+            "# 客户画像\n"
             f"{_customer_profile_text(session)}\n"
-            f"背景：{session.background}\n"
-            f"可参考资料：\n{_knowledge_text(knowledge)}"
+            f"客户公司：{session.customer_name} / {session.customer_type}\n"
+            f"训练类型：{session.training_type}\n商机阶段：{session.stage}\n训练目标：{session.goal}\n"
+            f"背景：{session.background}\n\n"
+            "# 知识库（仅供你了解产品信息，不要在回复中引用来源）\n"
+            f"{_knowledge_text(knowledge)}"
         )
         history = [{"sender_type": "BOT", "text": prompt}]
         for msg in messages[-8:]:
@@ -95,7 +98,7 @@ class LLMClient:
 
         prompt = self._report_prompt(session, messages, knowledge)
         try:
-            data = await self._chat([{"sender_type": "USER", "text": prompt}], config, max_tokens=1400)
+            data = await self._chat([{"sender_type": "USER", "text": prompt}], config, max_tokens=2048)
             llm_status = "llm"
         except httpx.HTTPError as exc:
             data = ""
@@ -170,6 +173,16 @@ class LLMClient:
         knowledge: list[KnowledgeItem],
     ) -> str:
         transcript = "\n".join(f"{m.role}: {m.content}" for m in messages) or "商机推进教练无多轮对话，仅基于业务员填写的商机背景生成推进方案。"
+        
+        # 分析对话统计数据
+        sales_messages = [m for m in messages if m.role == "sales"]
+        customer_messages = [m for m in messages if m.role == "customer"]
+        sales_turns = len(sales_messages)
+        avg_sales_length = sum(len(m.content) for m in sales_messages) / max(sales_turns, 1)
+        
+        # 构建详细的评分标准
+        scoring_criteria = self._build_scoring_criteria(session, sales_turns, avg_sales_length)
+        
         common = (
             "你是销售培训教练。必须基于输入的客户背景、商机阶段、训练目标、销售SOP知识库生成个性化内容，"
             "不要使用泛泛模板，不要编造未出现的事实。只输出一个合法 JSON 对象，不要 Markdown。\n"
@@ -177,7 +190,15 @@ class LLMClient:
             "scores 必须包含 7 项：SOP执行、客户洞察、需求澄清、异议处理、价值表达、推进动作、话术质量；"
             "每项格式为 {\"name\":\"维度\",\"value\":1-5,\"reason\":\"结合本次内容的具体原因\"}。\n"
             "citations 至少引用一条命中的知识库来源，source 使用文档名和版本，reason 写清片段类型、章节/页码和引用原因；"
-            "如果知识库为空或明显没有命中，reason 写“依据不足”，不要伪造来源。\n"
+            "如果知识库为空或明显没有命中，reason 写“依据不足”，不要伪造来源。\n\n"
+            "## 评分标准（必须严格遵循）\n"
+            f"{scoring_criteria}\n\n"
+            "## 评分计算规则\n"
+            "1. overall_score = (SOP执行×0.15 + 客户洞察×0.15 + 需求澄清×0.15 + 异议处理×0.15 + 价值表达×0.15 + 推进动作×0.15 + 话术质量×0.10) × 20\n"
+            "2. 每个维度必须基于对话中的具体表现评分，不能使用固定分数\n"
+            "3. 如果对话轮次少于3轮，整体评分不得超过70分\n"
+            "4. 如果没有明确的下一步动作，推进动作维度不得超过2分\n"
+            "5. 如果没有引用知识库内容，SOP执行维度不得超过3分\n\n"
             f"训练类型：{session.training_type}\n客户：{session.customer_name} / {session.customer_type}\n"
             f"阶段：{session.stage}\n目标：{session.goal}\n背景：{session.background}\n"
             f"知识库：\n{_knowledge_text(knowledge)}\n"
@@ -202,6 +223,86 @@ class LLMClient:
             + "alternatives 给 2-3 条替代话术，必须可直接用于下一次客户沟通。\n"
             + "checklist 给 3 个下一轮训练动作。\n"
         )
+
+    def _build_scoring_criteria(
+        self,
+        session: TrainingSession,
+        sales_turns: int,
+        avg_sales_length: float,
+    ) -> str:
+        """构建详细的评分标准，基于对话统计和训练目标"""
+        criteria = []
+        
+        # SOP执行维度
+        criteria.append("### SOP执行（权重15%）")
+        criteria.append("- 5分：严格遵循销售流程，每一步都有明确的确认动作")
+        criteria.append("- 4分：基本遵循流程，但缺少1-2个确认动作")
+        criteria.append("- 3分：部分遵循流程，但有多处遗漏")
+        criteria.append("- 2分：流程执行混乱，缺少关键步骤")
+        criteria.append("- 1分：完全没有遵循销售流程")
+        
+        # 客户洞察维度
+        criteria.append("\n### 客户洞察（权重15%）")
+        criteria.append("- 5分：准确识别客户真实需求、决策链和关键顾虑")
+        criteria.append("- 4分：识别了主要需求，但对决策链了解不足")
+        criteria.append("- 3分：识别了表面需求，但没有深入挖掘")
+        criteria.append("- 2分：对客户需求理解肤浅")
+        criteria.append("- 1分：完全没有关注客户需求")
+        
+        # 需求澄清维度
+        criteria.append("\n### 需求澄清（权重15%）")
+        criteria.append("- 5分：通过有效提问澄清了客户的真实需求和限制条件")
+        criteria.append("- 4分：澄清了主要需求，但遗漏了部分关键信息")
+        criteria.append("- 3分：进行了基本澄清，但深度不够")
+        criteria.append("- 2分：澄清问题很少或无效")
+        criteria.append("- 1分：完全没有进行需求澄清")
+        
+        # 异议处理维度
+        criteria.append("\n### 异议处理（权重15%）")
+        criteria.append("- 5分：有效回应客户异议，提供具体证据和解决方案")
+        criteria.append("- 4分：回应了异议，但证据不够充分")
+        criteria.append("- 3分：尝试回应异议，但缺乏说服力")
+        criteria.append("- 2分：回避或忽视客户异议")
+        criteria.append("- 1分：完全没有处理客户异议")
+        
+        # 价值表达维度
+        criteria.append("\n### 价值表达（权重15%）")
+        criteria.append("- 5分：清晰表达产品/服务价值，与客户需求紧密结合")
+        criteria.append("- 4分：表达了价值，但与客户需求关联不够紧密")
+        criteria.append("- 3分：价值表达泛泛，缺乏针对性")
+        criteria.append("- 2分：价值表达模糊或自相矛盾")
+        criteria.append("- 1分：完全没有表达价值")
+        
+        # 推进动作维度
+        criteria.append("\n### 推进动作（权重15%）")
+        criteria.append("- 5分：明确下一步动作，包括人员、时间、条件和验证方式")
+        criteria.append("- 4分：有下一步动作，但缺少1-2个关键要素")
+        criteria.append("- 3分：提出了下一步，但不够具体")
+        criteria.append("- 2分：下一步动作模糊或不可执行")
+        criteria.append("- 1分：完全没有推进动作")
+        
+        # 话术质量维度
+        criteria.append("\n### 话术质量（权重10%）")
+        criteria.append("- 5分：表达自然、专业，有说服力，符合销售场景")
+        criteria.append("- 4分：表达清晰，但缺乏感染力")
+        criteria.append("- 3分：表达基本通顺，但不够专业")
+        criteria.append("- 2分：表达生硬或存在明显问题")
+        criteria.append("- 1分：表达混乱或不恰当")
+        
+        # 添加对话统计信息
+        criteria.append(f"\n## 本次对话统计")
+        criteria.append(f"- 业务员轮次：{sales_turns}轮")
+        criteria.append(f"- 平均回复长度：{avg_sales_length:.0f}字")
+        criteria.append(f"- 训练目标：{session.goal}")
+        criteria.append(f"- 商机阶段：{session.stage}")
+        
+        # 根据对话轮次调整评分要求
+        if sales_turns < 3:
+            criteria.append("\n## 特殊评分要求")
+            criteria.append("- 对话轮次不足3轮，整体评分不得超过70分")
+            criteria.append("- 需要在summary中说明对话轮次不足的影响")
+        
+        return "\n".join(criteria)
 
     def _configured(self, config: EffectiveLLMConfig) -> bool:
         return config.configured
@@ -367,6 +468,9 @@ class LLMClient:
         else:
             scores = [self._score_item(item, fallback["scores"][index]) for index, item in enumerate(scores[:7])]
 
+        # 重新计算overall_score，确保符合权重规则
+        overall_score = self._calculate_overall_score(scores, session)
+        
         citations = data.get("citations")
         if not isinstance(citations, list) or not citations:
             citations = [{"source": source, "reason": source_reason}]
@@ -380,7 +484,7 @@ class LLMClient:
             citations.insert(0, {"source": "LLM 调用状态", "reason": status})
 
         normalized = {
-            "overall_score": self._score_value(data.get("overall_score"), fallback["overall_score"], 100),
+            "overall_score": overall_score,
             "summary": self._text(data.get("summary"), fallback["summary"]),
             "scores": scores,
             "good_lines": self._text_list(data.get("good_lines"), fallback["good_lines"], 2),
@@ -392,6 +496,50 @@ class LLMClient:
         if session.training_type == "商机推进教练":
             normalized = self._normalize_opportunity_report(normalized, session, knowledge)
         return normalized
+
+    def _calculate_overall_score(
+        self,
+        scores: list[dict[str, Any]],
+        session: TrainingSession,
+    ) -> int:
+        """根据权重规则计算总分"""
+        if not scores or len(scores) < 7:
+            return 70
+        
+        # 权重配置
+        weights = {
+            "SOP执行": 0.15,
+            "客户洞察": 0.15,
+            "需求澄清": 0.15,
+            "异议处理": 0.15,
+            "价值表达": 0.15,
+            "推进动作": 0.15,
+            "话术质量": 0.10,
+        }
+        
+        weighted_sum = 0
+        total_weight = 0
+        
+        for score_item in scores:
+            name = score_item.get("name", "")
+            value = score_item.get("value", 3)
+            weight = weights.get(name, 0.15)
+            weighted_sum += value * weight
+            total_weight += weight
+        
+        # 计算加权平均分（满分5分）
+        if total_weight > 0:
+            avg_score = weighted_sum / total_weight
+        else:
+            avg_score = 3.0
+        
+        # 转换为100分制
+        overall_score = int(avg_score * 20)
+        
+        # 限制分数范围
+        overall_score = max(60, min(100, overall_score))
+        
+        return overall_score
 
     def _normalize_opportunity_report(
         self,
@@ -525,21 +673,176 @@ class LLMClient:
         knowledge: list[KnowledgeItem],
     ) -> dict:
         source = knowledge[0].source_name if knowledge else "模拟销售 SOP"
+        
+        # 分析对话内容
+        sales_messages = [m for m in messages if m.role == "sales"]
+        customer_messages = [m for m in messages if m.role == "customer"]
+        sales_turns = len(sales_messages)
+        
+        # 提取关键信息
+        has_next_step = False
+        has_value_expression = False
+        has_objection_handling = False
+        has_clarification = False
+        
+        # 分析销售人员的表现
+        for msg in sales_messages:
+            content = msg.content.lower()
+            # 检查是否有下一步动作
+            if any(keyword in content for keyword in ["下一步", "接下来", "安排", "约定", "确认", "安排"]):
+                has_next_step = True
+            # 检查是否有价值表达
+            if any(keyword in content for keyword in ["优势", "价值", "好处", "利益", "帮助"]):
+                has_value_expression = True
+            # 检查是否有异议处理
+            if any(keyword in content for keyword in ["理解", "明白", "但是", "不过", "然而", "虽然"]):
+                has_objection_handling = True
+            # 检查是否有需求澄清
+            if any(keyword in content for keyword in ["请问", "能否", "是否", "需要", "想要", "希望"]):
+                has_clarification = True
+        
+        # 根据对话轮次和表现计算分数
+        base_score = 60
+        if sales_turns >= 3:
+            base_score += 10
+        if sales_turns >= 5:
+            base_score += 5
+        if has_next_step:
+            base_score += 10
+        if has_value_expression:
+            base_score += 5
+        if has_objection_handling:
+            base_score += 5
+        if has_clarification:
+            base_score += 5
+        
+        # 限制分数范围
+        overall_score = min(100, max(60, base_score))
+        
+        # 根据表现生成个性化评分
+        scores = []
+        
+        # SOP执行评分
+        sop_score = 3
+        sop_reason = "基本遵循销售流程，但缺少明确确认动作。"
+        if sales_turns >= 3:
+            sop_score = 4
+            sop_reason = "能围绕阶段推进，但缺少明确确认动作。"
+        if has_next_step:
+            sop_score = 5
+            sop_reason = "严格遵循销售流程，每一步都有明确的确认动作。"
+        scores.append({"name": "SOP执行", "value": sop_score, "reason": sop_reason})
+        
+        # 客户洞察评分
+        insight_score = 3
+        insight_reason = "识别了价格或推进顾虑，但没有继续追问决策链。"
+        if has_clarification:
+            insight_score = 4
+            insight_reason = "识别了主要需求，但对决策链了解不足。"
+        scores.append({"name": "客户洞察", "value": insight_score, "reason": insight_reason})
+        
+        # 需求澄清评分
+        clarify_score = 3
+        clarify_reason = "对客户真实限制了解不够。"
+        if has_clarification:
+            clarify_score = 4
+            clarify_reason = "澄清了主要需求，但遗漏了部分关键信息。"
+        scores.append({"name": "需求澄清", "value": clarify_score, "reason": clarify_reason})
+        
+        # 异议处理评分
+        objection_score = 3
+        objection_reason = "尝试回应异议，但缺乏说服力。"
+        if has_objection_handling:
+            objection_score = 4
+            objection_reason = "回应了异议，但证据不够充分。"
+        scores.append({"name": "异议处理", "value": objection_score, "reason": objection_reason})
+        
+        # 价值表达评分
+        value_score = 3
+        value_reason = "价值表达偏泛，需要结合成本、稳定性或交付风险。"
+        if has_value_expression:
+            value_score = 4
+            value_reason = "表达了价值，但与客户需求关联不够紧密。"
+        scores.append({"name": "价值表达", "value": value_score, "reason": value_reason})
+        
+        # 推进动作评分
+        action_score = 3
+        action_reason = "下一步动作还不够具体。"
+        if has_next_step:
+            action_score = 4
+            action_reason = "有下一步动作，但缺少1-2个关键要素。"
+        scores.append({"name": "推进动作", "value": action_score, "reason": action_reason})
+        
+        # 话术质量评分
+        speech_score = 3
+        speech_reason = "表达基本通顺，但不够专业。"
+        if sales_turns >= 3:
+            speech_score = 4
+            speech_reason = "表达清晰，但缺乏感染力。"
+        scores.append({"name": "话术质量", "value": speech_score, "reason": speech_reason})
+        
+        # 生成个性化总结
+        summary = "本轮能回应客户问题，但推进动作还需要更明确，建议把下一步收敛到关键人、时间和测试条件。"
+        if sales_turns < 3:
+            summary = "对话轮次不足，建议至少完成3轮对话以获得更全面的评估。"
+        elif has_next_step and has_value_expression:
+            summary = "本轮表现良好，能明确下一步动作并表达价值，建议继续加强需求澄清和异议处理。"
+        elif has_next_step:
+            summary = "能明确下一步动作，但价值表达和需求澄清还需要加强。"
+        elif has_value_expression:
+            summary = "能表达价值，但缺少明确的下一步动作，建议把对话收敛到具体行动。"
+        
+        # 生成个性化亮点
+        good_lines = []
+        if has_next_step:
+            good_lines.append("能明确提出下一步动作，推动对话进展。")
+        if has_value_expression:
+            good_lines.append("能结合客户需求表达产品价值。")
+        if has_objection_handling:
+            good_lines.append("能有效回应客户异议，保持对话流畅。")
+        if not good_lines:
+            good_lines.append("能保持对话连贯性，回应客户问题。")
+        
+        # 生成个性化风险点
+        risk_lines = []
+        if not has_next_step:
+            risk_lines.append("缺少明确的下一步动作，容易让商机停滞。")
+        if not has_clarification:
+            risk_lines.append("需求澄清不足，可能遗漏客户真实需求。")
+        if not has_objection_handling:
+            risk_lines.append("异议处理不够充分，可能影响客户决策。")
+        if not risk_lines:
+            risk_lines.append("后续保持沟通这类说法太虚，容易让商机继续停滞。")
+        
+        # 生成个性化建议
+        alternatives = []
+        if not has_next_step:
+            alternatives.append("建议改成：我们先约技术和采购一起确认测试条件，您看周三下午是否方便？")
+        if not has_clarification:
+            alternatives.append("建议增加需求澄清问题：您最关注的是稳定性、成本还是交付周期？")
+        if not has_objection_handling:
+            alternatives.append("建议回应异议时提供更多证据：我们有第三方检测报告和客户案例。")
+        if not alternatives:
+            alternatives.append("建议把下一步收敛为明确的人员、时间和条件。")
+        
+        # 生成个性化任务清单
+        checklist = []
+        if not has_next_step:
+            checklist.append("确认关键人")
+        if not has_clarification:
+            checklist.append("补充需求澄清问题")
+        if not has_objection_handling:
+            checklist.append("准备异议处理话术")
+        checklist.append("约定下一次沟通时间")
+        checklist.append("补充测试或成本依据")
+        
         return {
-            "overall_score": 78,
-            "summary": "本轮能回应客户问题，但推进动作还需要更明确，建议把下一步收敛到关键人、时间和测试条件。",
-            "scores": [
-                {"name": "SOP执行", "value": 4, "reason": "能围绕阶段推进，但缺少明确确认动作。"},
-                {"name": "客户洞察", "value": 3, "reason": "识别了价格或推进顾虑，但没有继续追问决策链。"},
-                {"name": "需求澄清", "value": 3, "reason": "对客户真实限制了解不够。"},
-                {"name": "异议处理", "value": 4, "reason": "能回应异议，但证据还可以更具体。"},
-                {"name": "价值表达", "value": 3, "reason": "价值表达偏泛，需要结合成本、稳定性或交付风险。"},
-                {"name": "推进动作", "value": 3, "reason": "下一步动作还不够具体。"},
-                {"name": "话术质量", "value": 4, "reason": "表达自然，但收口力度不足。"},
-            ],
-            "good_lines": ["能先承认客户顾虑，再解释价值。"],
-            "risk_lines": ["后续保持沟通这类说法太虚，容易让商机继续停滞。"],
-            "alternatives": ["建议改成：我们先约技术和采购一起确认测试条件，您看周三下午是否方便？"],
-            "checklist": ["确认关键人", "约定下一次沟通时间", "补充测试或成本依据"],
+            "overall_score": overall_score,
+            "summary": summary,
+            "scores": scores,
+            "good_lines": good_lines[:2],
+            "risk_lines": risk_lines[:2],
+            "alternatives": alternatives[:3],
+            "checklist": checklist[:3],
             "citations": [{"source": source, "reason": "用于判断推荐话术和禁用话术。"}],
         }

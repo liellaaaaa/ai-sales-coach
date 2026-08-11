@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000/api";
+const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 
 export async function api(path, options = {}) {
   const token = localStorage.getItem("salesCoachToken");
@@ -54,5 +54,7 @@ export async function apiAudio(path, body) {
     }
     throw new Error(detail);
   }
-  return response.blob();
+  const buffer = await response.arrayBuffer();
+  if (buffer.byteLength === 0) throw new Error("语音数据为空");
+  return new Blob([buffer], { type: response.headers.get("content-type") || "audio/wav" });
 }

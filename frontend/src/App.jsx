@@ -1219,13 +1219,15 @@ function Chat({ session, onSession, onReport, onError, onReset, voiceEnabled }) 
       if (!blob) {
         setPlayback({ key, status: "loading" });
         blob = await apiAudio("/voice/speech", { text: (message.content || "").trim() });
+        if (!blob || blob.size === 0) throw new Error("语音数据为空");
         audioCache.current.set(key, blob);
       }
       setPlayback({ key, status: "playing" });
       playerRef.current.playBlob(blob, () => {
         setPlayback((current) => (current.key === key ? { key: "", status: "idle" } : current));
       });
-    } catch {
+    } catch (err) {
+      console.error("语音播放失败:", err);
       setPlayback({ key, status: "error" });
     }
   }
