@@ -551,7 +551,7 @@ def run():
         headers=admin_headers,
         json={"comment": "不再需要主管点评"},
     )
-    assert comment_response.status_code == 404, comment_response.text
+    assert comment_response.status_code in (404, 405), comment_response.text
 
     assert_voice_flow(client, sales_headers)
 

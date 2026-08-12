@@ -1,5 +1,9 @@
-from fastapi import FastAPI
+from pathlib import Path
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.db.session import Base, SessionLocal, engine
 from app.db.migrations import ensure_runtime_schema
@@ -48,3 +52,18 @@ def health():
         "llm_mode": config.mode,
         "voice_configured": VoiceClient().configured,
     }
+
+
+# Serve frontend static files
+FRONTEND_DIR = Path(__file__).parent.parent.parent / "frontend" / "dist"
+
+if FRONTEND_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="static-assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(request: Request, full_path: str):
+        # Serve static files or fallback to index.html for SPA routing
+        file_path = FRONTEND_DIR / full_path
+        if file_path.is_file():
+            return FileResponse(file_path)
+        return FileResponse(FRONTEND_DIR / "index.html")

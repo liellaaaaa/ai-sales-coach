@@ -6646,6 +6646,194 @@ fieldset:disabled button:hover {
     width: 100%;
   }
   .msg { max-width: 100%; }
+
+  /* 聊天页移动端优化 */
+  .chat {
+    grid-template-rows: minmax(280px, 50dvh) auto;
+    border-radius: 0;
+  }
+  .chat-log {
+    padding: 14px;
+    gap: 12px;
+  }
+  .bubble {
+    font-size: 14px;
+    padding: 10px 13px;
+  }
+  .chat-actions {
+    padding: 12px 14px 10px;
+    gap: 10px;
+  }
+  .composer-tools {
+    gap: 8px;
+    font-size: 11.5px;
+  }
+  .composer-tools > span {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .send-button {
+    min-height: 44px;
+    min-width: 64px;
+    font-size: 13px;
+  }
+  .composer-row input {
+    min-height: 44px;
+    font-size: 14px;
+  }
+  .mic-button {
+    min-height: 44px;
+    padding: 0 12px;
+  }
+  .review-readiness {
+    padding: 12px;
+    gap: 10px;
+  }
+  .review-readiness b { font-size: 13px; }
+  .review-readiness p { font-size: 12px; }
+  .review-readiness-actions { gap: 8px; }
+  .finish-button {
+    min-height: 40px;
+    font-size: 13px;
+  }
+  .report-generating { padding: 12px; }
+  .report-generation-head { gap: 10px; }
+
+  /* 报告页移动端优化 */
+  .report-page {
+    --report-top-card-height: auto;
+    --report-detail-card-height: auto;
+  }
+  .report-page .coach-report-grid { grid-template-columns: 1fr; }
+  .report-page .report-detail-grid { grid-template-columns: 1fr; }
+  .report-page .coach-conclusion,
+  .report-page .ability-portrait,
+  .report-page .next-training-panel,
+  .report-page .compact-score-card {
+    min-height: 0;
+    height: auto;
+    overflow: visible;
+  }
+  .report-page .ability-portrait .analysis-panel { grid-template-columns: 1fr; }
+  .report-page .ability-portrait .radar-wrap { min-height: 260px; }
+  .report-page .ability-portrait .analysis-copy { grid-template-columns: 1fr; }
+  .report-page .compact-score-card .score-list { grid-template-columns: 1fr; }
+  .report-page .compact-score-card .score-row {
+    grid-template-columns: minmax(112px, 0.32fr) minmax(120px, 1fr) 34px max-content;
+    align-items: center;
+    min-height: 52px;
+  }
+  .report-page .compact-score-card .bar {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .report-page .compact-score-card .score {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .report-page .compact-score-card .score-reason-toggle {
+    grid-column: 4;
+    grid-row: 1;
+    justify-self: end;
+  }
+  .report-page .compact-score-card .score-reason-panel {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .report-page .score-priority > div { padding-right: 0; }
+  .report-page .score-priority > .score-average {
+    position: static;
+    width: fit-content;
+    min-width: 0;
+    height: auto;
+    margin-top: 4px;
+  }
+  .report-hero { gap: 16px; margin: 14px 0 4px; }
+  .report-summary h3 { font-size: 26px; }
+  .report-summary p { font-size: 13px; }
+  .report-score-card {
+    padding: 16px;
+  }
+  .report-score-card strong { font-size: 38px; }
+  .opportunity-hero { gap: 14px; margin: 14px 0 2px; }
+  .opportunity-summary h3 { font-size: 24px; }
+  .opportunity-summary p { font-size: 13px; }
+  .opportunity-score { padding: 14px; }
+  .opportunity-score strong { font-size: 28px; }
+  .opportunity-command {
+    padding: 16px;
+    gap: 14px;
+  }
+  .opportunity-command h3 { font-size: 20px; }
+  .opportunity-command aside { padding: 12px; }
+  .opportunity-panel {
+    min-height: auto;
+    padding: 16px;
+  }
+  .judgment-board { grid-template-columns: 1fr; gap: 8px; }
+  .strategy-grid { grid-template-columns: 1fr; gap: 8px; }
+  .strategy-grid article { min-height: auto; padding-top: 34px; }
+  .coach-conclusion,
+  .ability-portrait { padding: 16px; }
+  .coach-summary { font-size: 13px; padding: 12px 14px 12px 16px; }
+  .coach-focus-grid span { font-size: 12.5px; white-space: normal; }
+  .coach-focus-grid p { font-size: 13px; padding: 12px 14px; }
+  .highlight-line {
+    min-height: 120px;
+    padding: 14px 16px;
+  }
+  .highlight-line p { font-size: 13px; }
+  .report-section { padding: 16px; }
+  .report-section h3 { font-size: 15px; }
+  .next-training-grid article { padding: 12px; }
+  .training-focus-card strong { font-size: 13.5px; }
+  .script-bubble { max-width: 100%; padding: 9px 11px; }
+  .script-bubble p { font-size: 12px; }
+
+  /* 仪表盘移动端优化 */
+  .profile-metrics article { padding: 12px; min-height: auto; }
+  .profile-metrics strong { font-size: 24px; }
+  .profile-panel { padding: 14px; }
+  .profile-section-head h4 { font-size: 16px; }
+  .profile-ability-layout { grid-template-columns: 1fr; gap: 12px; }
+  .ability-overview .radar-wrap { min-height: 260px; }
+  .profile-insight-list { gap: 10px; }
+  .profile-insight { min-height: auto; padding: 12px; }
+  .profile-insight b { font-size: 15px; }
+  .profile-insight p { font-size: 12.5px; }
+  .action-card.primary-action { padding: 14px; }
+  .action-card.primary-action strong { font-size: 16px; }
+  .action-steps { padding: 12px; }
+  .distribution-columns { grid-template-columns: 1fr; }
+  .score-trend-line { overflow-x: auto; }
+  .score-priority {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .score-priority > b {
+    justify-self: start;
+  }
+  .score-row, .trend-row { grid-template-columns: 78px 1fr 30px; }
+
+  /* 表单和训练页移动端优化 */
+  .form { gap: 12px; }
+  .customer-info-form { grid-template-columns: 1fr; }
+  .customer-info-form .demand-field { grid-column: auto; }
+  .profile-tuning { grid-template-columns: 1fr; gap: 10px; }
+  .goal { min-height: 100px; padding: 11px; }
+  .goal-head b { font-size: 12.5px; }
+  .goal-desc { font-size: 11.5px; }
+  .template-card { min-height: 96px; padding: 12px; }
+  .template-card b { font-size: 13.5px; }
+  .setup-block { padding: 14px; }
+  .info-overview h4 { font-size: 18px; }
+
+  /* 历史记录移动端优化 */
+  .record-item { padding: 14px; }
+  .knowledge-item { padding: 14px; }
+  .pagination-bar { gap: 10px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -6658,13 +6846,19 @@ fieldset:disabled button:hover {
 @media (max-width: 520px) {
   .brand { grid-template-columns: 34px 1fr; }
   header h2 { font-size: 27px; }
-  .panel { padding: 16px; }
-  .topbar h2 { font-size: 16px; }
+  .panel { padding: 14px; }
+  .topbar h2 { font-size: 15px; }
+  .topbar { padding: 10px 12px; min-height: 52px; }
+  .workspace { padding: 14px 12px 36px; }
   .runtime-mode-notice {
     align-items: flex-start;
     flex-direction: column;
     gap: 4px;
+    font-size: 12px;
+    padding: 8px 10px;
   }
+  .runtime-mode-notice b { font-size: 12px; }
+  .runtime-mode-notice span { font-size: 11.5px; }
   .next-training-grid { grid-template-columns: 1fr; }
   .script-bubble { max-width: 100%; }
   .compact-score-card .score-list { grid-template-columns: 1fr; }
@@ -6701,11 +6895,15 @@ fieldset:disabled button:hover {
   .task-detail summary {
     grid-template-columns: 1fr;
     align-items: start;
+    gap: 8px;
+    min-height: 44px;
+    padding: 8px 10px;
   }
   .task-summary-meta {
     justify-content: space-between;
     width: 100%;
   }
+  .task-toggle { font-size: 10.5px; }
   .score-priority {
     grid-template-columns: 1fr;
   }
@@ -6720,6 +6918,136 @@ fieldset:disabled button:hover {
     grid-auto-flow: column;
   }
   .report-page .score-priority > div { padding-right: 0; }
+
+  /* 聊天页超小屏优化 */
+  .chat {
+    grid-template-rows: minmax(240px, 45dvh) auto;
+  }
+  .chat-log { padding: 10px; gap: 10px; }
+  .bubble { font-size: 13.5px; padding: 9px 11px; line-height: 1.65; }
+  .who { font-size: 10px; }
+  .chat-actions { padding: 10px 12px 8px; }
+  .composer-row { gap: 8px; }
+  .composer-row input { min-height: 42px; font-size: 14px; }
+  .send-button { min-height: 42px; min-width: 56px; font-size: 12.5px; }
+  .mic-button { min-height: 42px; padding: 0 10px; font-size: 12px; }
+  .review-readiness { padding: 10px; }
+  .review-readiness b { font-size: 12.5px; }
+  .review-readiness p { font-size: 11.5px; }
+  .review-readiness-actions button { min-height: 38px; font-size: 12.5px; }
+  .report-generating { padding: 10px; }
+  .report-stepper { gap: 6px; }
+  .report-step { padding: 7px; }
+  .report-step-main span { width: 20px; height: 20px; font-size: 10px; }
+
+  /* 报告页超小屏优化 */
+  .report-page .ability-portrait .radar-wrap { min-height: 220px; }
+  .report-page .ability-portrait .analysis-copy { grid-template-columns: 1fr; }
+  .report-page .highlight-line { min-height: 0; }
+  .report-hero { gap: 12px; margin: 10px 0 4px; }
+  .report-summary h3 { font-size: 22px; }
+  .report-summary p { font-size: 12.5px; }
+  .report-meta span { font-size: 11px; padding: 4px 8px; }
+  .report-score-card { padding: 14px; }
+  .report-score-card strong { font-size: 32px; }
+  .report-score-card p { font-size: 11.5px; }
+  .opportunity-hero { gap: 10px; margin: 10px 0 2px; }
+  .opportunity-summary h3 { font-size: 20px; }
+  .opportunity-summary p { font-size: 12.5px; }
+  .opportunity-score { padding: 12px; }
+  .opportunity-score strong { font-size: 24px; }
+  .opportunity-command { padding: 14px; gap: 12px; }
+  .opportunity-command h3 { font-size: 18px; line-height: 1.4; }
+  .opportunity-command p { font-size: 12.5px; }
+  .opportunity-command aside { padding: 10px; }
+  .opportunity-panel { padding: 14px; gap: 10px; }
+  .judgment-board article { padding: 10px 12px; }
+  .judgment-board article b { font-size: 13px; }
+  .judgment-board article p { font-size: 12px; }
+  .strategy-grid article { min-height: auto; padding: 10px 12px; padding-top: 30px; }
+  .strategy-grid article b { font-size: 12.5px; }
+  .strategy-grid article p { font-size: 12px; }
+  .action-panel li { padding: 10px 0 10px 16px; }
+  .action-panel li b { font-size: 13px; }
+  .action-panel li p { font-size: 12px; }
+  .coach-conclusion { padding: 14px; }
+  .coach-summary { font-size: 12.5px; padding: 10px 12px 10px 14px; }
+  .coach-focus-grid span { font-size: 12px; padding: 10px 12px; }
+  .coach-focus-grid p { font-size: 12.5px; padding: 10px 12px; }
+  .highlight-line { min-height: 100px; padding: 12px 14px; }
+  .highlight-line span { font-size: 11.5px; }
+  .highlight-line p { font-size: 12.5px; line-height: 1.6; }
+  .report-section { padding: 14px; gap: 10px; }
+  .report-section h3 { font-size: 14px; }
+  .report-section-head p { font-size: 12px; }
+  .next-training-grid { gap: 8px; }
+  .next-training-grid article { padding: 10px; }
+  .training-focus-card strong { font-size: 13px; }
+  .training-focus-card p { font-size: 12px; }
+  .script-bubble { padding: 8px 10px; }
+  .script-bubble b { font-size: 10px; }
+  .script-bubble p { font-size: 11.5px; line-height: 1.5; }
+  .task-detail summary { padding: 7px 8px; }
+  .task-summary-copy b { font-size: 12px; }
+  .task-due { height: 22px; padding: 0 7px; font-size: 10px; }
+  .task-expanded { padding: 8px 10px 10px; }
+  .task-expanded span { font-size: 10.5px; }
+  .task-expanded p { font-size: 11.5px; }
+  .plan-score-row > span { font-size: 12.5px; }
+  .plan-score-row b { font-size: 12px; }
+  .plan-score-row p { font-size: 12px; }
+
+  /* 仪表盘超小屏优化 */
+  .profile-metrics { gap: 10px; margin-bottom: 2px; }
+  .profile-metrics article { padding: 10px; gap: 6px; }
+  .profile-metrics span { font-size: 11px; }
+  .profile-metrics strong { font-size: 22px; }
+  .profile-metrics p { font-size: 11.5px; }
+  .profile-panel { padding: 12px; gap: 10px; }
+  .profile-section-head h4 { font-size: 15px; }
+  .profile-section-head p { font-size: 11.5px; }
+  .ability-overview .radar-wrap { min-height: 240px; }
+  .radar-figure { width: min(100%, 260px); }
+  .radar-label { font-size: 10.5px; max-width: 48px; }
+  .profile-insight { padding: 10px; }
+  .profile-insight b { font-size: 14px; }
+  .profile-insight p { font-size: 12px; }
+  .action-card.primary-action { padding: 12px; }
+  .action-card.primary-action strong { font-size: 15px; }
+  .action-card.primary-action p { font-size: 12px; }
+  .action-steps { padding: 10px; }
+  .action-steps p { font-size: 12px; }
+  .distribution-columns { gap: 12px; }
+  .distribution-row { min-height: 28px; }
+  .distribution-row span { font-size: 12px; }
+
+  /* 登录页超小屏优化 */
+  .login-card { padding: 22px; gap: 12px; }
+  .login-card h1 { font-size: 26px; }
+
+  /* 表单超小屏优化 */
+  .setup-block { padding: 12px; gap: 12px; }
+  .template-card { min-height: 88px; padding: 10px; }
+  .template-card b { font-size: 13px; }
+  .template-card > span:not(.template-card-head),
+  .template-card small { font-size: 11.5px; }
+  .goal { flex: 0 0 170px; min-height: 90px; padding: 10px; }
+  .goal-head b { font-size: 12px; }
+  .goal-mark { width: 26px; height: 26px; flex: 0 0 26px; }
+  .goal-mark svg { width: 15px; height: 15px; }
+  .info-overview { padding: 12px; gap: 10px; }
+  .info-overview h4 { font-size: 16px; }
+  .info-overview p { font-size: 12px; }
+  .info-chips span { font-size: 11px; padding: 4px 8px; }
+
+  /* 通用按钮超小屏优化 */
+  .primary, .secondary, .text-button {
+    min-height: 40px;
+    font-size: 13px;
+  }
+  .primary { padding: 8px 14px; }
+  .secondary { padding: 8px 14px; }
+  .text-button { min-height: 32px; font-size: 12px; }
 }
 
 /* ===== 语音输入 / 输出 ===== */
