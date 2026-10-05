@@ -156,12 +156,17 @@ class TrainingStartIn(BaseModel):
 
 class MessageIn(BaseModel):
     content: str
+    speaker: str | None = None
 
 
 class MessageOut(BaseModel):
     id: int
     role: str
     content: str
+    speaker: str = "buyer"
+
+    class Config:
+        from_attributes = True
 
 
 class VoiceTranscribeIn(BaseModel):
@@ -171,6 +176,7 @@ class VoiceTranscribeIn(BaseModel):
 
 class VoiceSpeechIn(BaseModel):
     text: str
+    speaker: str = "buyer"
 
 
 class SuggestionOut(BaseModel):

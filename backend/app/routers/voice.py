@@ -11,7 +11,10 @@ from app.services.voice import (
     VoiceClient,
     VoiceError,
     VoiceTimeoutError,
+    get_speaker_voice,
+    get_tts_style,
     is_wav_base64,
+    normalize_speaker,
 )
 
 logger = logging.getLogger(__name__)
@@ -43,7 +46,8 @@ async def transcribe(payload: VoiceTranscribeIn, _: User = Depends(current_user)
 
 @router.post("/speech")
 async def synthesize(payload: VoiceSpeechIn, _: User = Depends(current_user)):
-    client = VoiceClient()
+    speaker = normalize_speaker(payload.speaker)
+    client = VoiceClient(voice=get_speaker_voice(speaker), style_prompt=get_tts_style(speaker=speaker))
     _require_configured(client)
     text = (payload.text or "").strip()
     if not text:

@@ -13,6 +13,7 @@ def ensure_runtime_schema():
     document_columns = {column["name"] for column in inspector.get_columns("knowledge_documents")} if "knowledge_documents" in tables else set()
     version_columns = {column["name"] for column in inspector.get_columns("knowledge_document_versions")} if "knowledge_document_versions" in tables else set()
     session_columns = {column["name"] for column in inspector.get_columns("training_sessions")} if "training_sessions" in tables else set()
+    message_columns = {column["name"] for column in inspector.get_columns("training_messages")} if "training_messages" in tables else set()
 
     for name, column_type in {
         "document_id": "INTEGER",
@@ -60,6 +61,13 @@ def ensure_runtime_schema():
         }.items():
             if name not in session_columns:
                 statements.append(f"ALTER TABLE training_sessions ADD COLUMN {name} {column_type}")
+
+    if message_columns:
+        for name, column_type in {
+            "speaker": "VARCHAR(40) DEFAULT 'buyer'",
+        }.items():
+            if name not in message_columns:
+                statements.append(f"ALTER TABLE training_messages ADD COLUMN {name} {column_type}")
 
     if not statements:
         return

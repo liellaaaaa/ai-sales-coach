@@ -2,6 +2,7 @@ import base64
 import binascii
 import json
 import logging
+import re
 from typing import AsyncGenerator
 
 import httpx
@@ -15,6 +16,40 @@ TOKEN_PLAN_BASE_URL = "https://token-plan-cn.xiaomimimo.com"
 TTS_MAX_CHARS = 500
 MAX_AUDIO_BASE64_LENGTH = 8 * 1024 * 1024
 TTS_STYLE_PROMPT = "用自然、平稳、接近真人客服的语气朗读，语速适中。"
+
+# 客户侧多角色 speaker
+SPEAKER_BUYER = "buyer"      # 采购
+SPEAKER_TECH = "tech"        # 技术主管
+SPEAKER_BOSS = "boss"        # 厂长/老板
+SPEAKER_DEFAULT = "buyer"    # 客户默认
+
+# speaker / 别名 → 规范值
+_SPEAKER_ALIASES: dict[str, str] = {
+    "buyer": SPEAKER_BUYER,
+    "customer": SPEAKER_BUYER,
+    "采购": SPEAKER_BUYER,
+    "客户": SPEAKER_BUYER,
+    "tech": SPEAKER_TECH,
+    "技术": SPEAKER_TECH,
+    "技术主管": SPEAKER_TECH,
+    "boss": SPEAKER_BOSS,
+    "老板": SPEAKER_BOSS,
+    "厂长": SPEAKER_BOSS,
+}
+
+# speaker → MiMo TTS 预设音色（buyer 可被 settings.mimo_tts_voice 覆盖）
+_SPEAKER_VOICE_MAP: dict[str, str] = {
+    SPEAKER_BUYER: "苏打",
+    SPEAKER_TECH: "茉莉",
+    SPEAKER_BOSS: "白桦",
+}
+
+# speaker → 风格微调
+_SPEAKER_STYLE: dict[str, str] = {
+    SPEAKER_BUYER: "语气偏精明务实，关注价格和性价比，说话时带一点压价的意味。",
+    SPEAKER_TECH: "语气专业冷静，关注参数、指标和技术可行性，表达严谨克制。",
+    SPEAKER_BOSS: "语气强势有压迫感，拍板果断，关注结果和风险。",
+}
 
 # 场景模板 → TTS 风格指令映射
 _TEMPLATE_STYLE_MAP: dict[str, str] = {
@@ -43,20 +78,67 @@ _PERSONALITY_STYLE: dict[str, str] = {
 _DEFAULT_STYLE = "用自然、平稳、接近真实客户的语气说话，语速适中，声音平和自然。"
 
 
-def get_tts_style(template_id: str = "", difficulty: str = "标准", personality: str = "谨慎型") -> str:
-    """根据训练场景配置返回 TTS 自然语言风格指令。"""
+def normalize_speaker(value: str | None) -> str:
+    """空/未知 → buyer；customer 映射为 buyer。"""
+    if not value:
+        return SPEAKER_DEFAULT
+    key = str(value).strip().lower()
+    if not key:
+        return SPEAKER_DEFAULT
+    return _SPEAKER_ALIASES.get(key, SPEAKER_DEFAULT)
+
+
+def get_speaker_voice(speaker: str) -> str:
+    """返回 TTS voice 名。预设：buyer=苏打, tech=茉莉, boss=白桦（buyer 可用 settings 覆盖）"""
+    key = normalize_speaker(speaker)
+    if key == SPEAKER_BUYER:
+        return settings.mimo_tts_voice or _SPEAKER_VOICE_MAP[SPEAKER_BUYER]
+    return _SPEAKER_VOICE_MAP.get(key, _SPEAKER_VOICE_MAP[SPEAKER_BUYER])
+
+
+def get_tts_style(
+    template_id: str = "",
+    difficulty: str = "标准",
+    personality: str = "谨慎型",
+    speaker: str = SPEAKER_DEFAULT,
+) -> str:
+    """根据训练场景配置返回 TTS 自然语言风格指令，按 speaker 微调。"""
     if template_id and template_id in _TEMPLATE_STYLE_MAP:
-        return _TEMPLATE_STYLE_MAP[template_id]
-    # 无精确模板匹配时，按客户画像动态拼接
-    diff_part = _DIFFICULTY_STYLE.get(difficulty, "")
-    pers_part = _PERSONALITY_STYLE.get(personality, "")
-    if diff_part and pers_part:
-        return f"用{diff_part}的语气说话，{pers_part}，像一个真实客户在对话。"
-    if diff_part:
-        return f"用{diff_part}的语气说话，像一个真实客户在对话。"
-    if pers_part:
-        return f"说话时{pers_part}，像一个真实客户在对话。"
-    return _DEFAULT_STYLE
+        base = _TEMPLATE_STYLE_MAP[template_id]
+    else:
+        # 无精确模板匹配时，按客户画像动态拼接
+        diff_part = _DIFFICULTY_STYLE.get(difficulty, "")
+        pers_part = _PERSONALITY_STYLE.get(personality, "")
+        if diff_part and pers_part:
+            base = f"用{diff_part}的语气说话，{pers_part}，像一个真实客户在对话。"
+        elif diff_part:
+            base = f"用{diff_part}的语气说话，像一个真实客户在对话。"
+        elif pers_part:
+            base = f"说话时{pers_part}，像一个真实客户在对话。"
+        else:
+            base = _DEFAULT_STYLE
+    speaker_part = _SPEAKER_STYLE.get(normalize_speaker(speaker), "")
+    if speaker_part:
+        return f"{base}{speaker_part}"
+    return base
+
+
+def extract_speaker_tag(text: str) -> tuple[str, str]:
+    """识别开头 [buyer]/[tech]/[boss]/[采购]/[技术]/[老板] 等标签并剥离。
+
+    返回 (speaker, clean_text)；无标签时 speaker=buyer。
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return SPEAKER_DEFAULT, ""
+    match = re.match(r"^\[([^\]]+)\]\s*", raw)
+    if not match:
+        return SPEAKER_DEFAULT, raw
+    tag = match.group(1).strip().lower()
+    speaker = _SPEAKER_ALIASES.get(tag)
+    if speaker is None:
+        return SPEAKER_DEFAULT, raw
+    return speaker, raw[match.end():].strip()
 
 
 class VoiceError(Exception):
@@ -76,6 +158,10 @@ def is_wav_base64(audio_base64: str) -> bool:
 
 
 class VoiceClient:
+    def __init__(self, voice: str = "", style_prompt: str = ""):
+        self.voice = voice
+        self.style_prompt = style_prompt
+
     @property
     def configured(self) -> bool:
         return bool(settings.mimo_api_key)
@@ -91,6 +177,12 @@ class VoiceClient:
         if not base_url or base_url == DEFAULT_BASE_URL:
             base_url = TOKEN_PLAN_BASE_URL if (settings.mimo_api_key or "").startswith("tp-") else DEFAULT_BASE_URL
         return f"{base_url}/v1/chat/completions"
+
+    def _resolve_voice(self, voice: str = "") -> str:
+        return voice or self.voice or settings.mimo_tts_voice or "苏打"
+
+    def _resolve_style(self, style_prompt: str = "") -> str:
+        return style_prompt or self.style_prompt or TTS_STYLE_PROMPT
 
     async def _post(self, payload: dict) -> dict:
         try:
@@ -134,14 +226,14 @@ class VoiceClient:
         message = choices[0].get("message") or {}
         return (message.get("content") or "").strip()
 
-    async def synthesize(self, text: str, style_prompt: str = "") -> bytes:
+    async def synthesize(self, text: str, style_prompt: str = "", voice: str = "") -> bytes:
         payload = {
             "model": settings.mimo_tts_model,
             "messages": [
-                {"role": "user", "content": style_prompt or TTS_STYLE_PROMPT},
+                {"role": "user", "content": self._resolve_style(style_prompt)},
                 {"role": "assistant", "content": text},
             ],
-            "audio": {"format": "wav", "voice": settings.mimo_tts_voice or "苏打"},
+            "audio": {"format": "wav", "voice": self._resolve_voice(voice)},
         }
         body = await self._post(payload)
         choices = body.get("choices") or []
@@ -156,15 +248,17 @@ class VoiceClient:
         except (binascii.Error, ValueError) as exc:
             raise VoiceError("TTS 音频数据解码失败") from exc
 
-    async def synthesize_stream(self, text: str, style_prompt: str = "") -> AsyncGenerator[bytes, None]:
+    async def synthesize_stream(
+        self, text: str, style_prompt: str = "", voice: str = ""
+    ) -> AsyncGenerator[bytes, None]:
         """流式 TTS 合成，逐块 yield PCM16 原始字节。"""
         payload = {
             "model": settings.mimo_tts_model,
             "messages": [
-                {"role": "user", "content": style_prompt or TTS_STYLE_PROMPT},
+                {"role": "user", "content": self._resolve_style(style_prompt)},
                 {"role": "assistant", "content": text},
             ],
-            "audio": {"format": "pcm16", "voice": settings.mimo_tts_voice or "苏打"},
+            "audio": {"format": "pcm16", "voice": self._resolve_voice(voice)},
             "stream": True,
         }
         try:

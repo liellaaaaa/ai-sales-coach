@@ -19,12 +19,37 @@ from app.schemas import (
 from app.services.auth import current_user
 from app.services.knowledge import find_relevant_knowledge
 from app.services.llm import LLMClient
-from app.services.voice import VoiceClient, VoiceError, VoiceTimeoutError, get_tts_style
+from app.services.voice import (
+    SPEAKER_DEFAULT,
+    VoiceClient,
+    VoiceError,
+    VoiceTimeoutError,
+    extract_speaker_tag,
+    get_speaker_voice,
+    get_tts_style,
+    normalize_speaker,
+)
+
+try:
+    from app.services.llm import extract_speaker
+except ImportError:  # llm 侧尚未提供 extract_speaker 时的本地兜底
+    extract_speaker = extract_speaker_tag
 
 logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/training", tags=["training"])
+
+
+def _split_speaker(text: str) -> tuple[str, str]:
+    """解析客户回复中的 speaker 标签，返回 (speaker, clean_text)。"""
+    try:
+        speaker, clean = extract_speaker(text or "")
+    except Exception:
+        return extract_speaker_tag(text or "")
+    speaker = normalize_speaker(speaker)
+    clean = (clean or "").strip() or (text or "").strip()
+    return speaker, clean
 
 
 def _can_read(user: User, session: TrainingSession) -> bool:
@@ -44,7 +69,8 @@ async def start_session(payload: TrainingStartIn, db: Session = Depends(get_db),
 
     knowledge = find_relevant_knowledge(db, session)
     first_reply = await LLMClient().customer_reply(session, [], knowledge)
-    db.add(TrainingMessage(session_id=session.id, role="customer", content=first_reply))
+    speaker, clean = _split_speaker(first_reply)
+    db.add(TrainingMessage(session_id=session.id, role="customer", content=clean, speaker=speaker))
     db.commit()
     db.refresh(session)
     return session
@@ -105,7 +131,8 @@ async def retry_session(session_id: int, db: Session = Depends(get_db), user: Us
 
     knowledge = find_relevant_knowledge(db, session)
     first_reply = await LLMClient().customer_reply(session, [], knowledge)
-    db.add(TrainingMessage(session_id=session.id, role="customer", content=first_reply))
+    speaker, clean = _split_speaker(first_reply)
+    db.add(TrainingMessage(session_id=session.id, role="customer", content=clean, speaker=speaker))
     db.commit()
     db.refresh(session)
     return session
@@ -124,17 +151,19 @@ async def send_message(
     if session.status == "completed":
         raise HTTPException(status_code=400, detail="训练已完成")
 
-    db.add(TrainingMessage(session_id=session.id, role="sales", content=payload.content))
+    sales_speaker = normalize_speaker(payload.speaker) if payload.speaker else SPEAKER_DEFAULT
+    db.add(TrainingMessage(session_id=session.id, role="sales", content=payload.content, speaker=sales_speaker))
     db.commit()
     db.refresh(session)
 
     knowledge = find_relevant_knowledge(db, session)
     reply = await LLMClient().customer_reply(session, session.messages, knowledge)
-    message = TrainingMessage(session_id=session.id, role="customer", content=reply)
+    speaker, clean = _split_speaker(reply)
+    message = TrainingMessage(session_id=session.id, role="customer", content=clean, speaker=speaker)
     db.add(message)
     db.commit()
     db.refresh(message)
-    return MessageOut(id=message.id, role=message.role, content=message.content)
+    return MessageOut(id=message.id, role=message.role, content=message.content, speaker=message.speaker)
 
 
 @router.post("/sessions/{session_id}/stream")
@@ -152,7 +181,8 @@ async def stream_message(
         raise HTTPException(status_code=400, detail="训练已完成")
 
     # 在请求作用域内保存业务员消息
-    db.add(TrainingMessage(session_id=session.id, role="sales", content=payload.content))
+    sales_speaker = normalize_speaker(payload.speaker) if payload.speaker else SPEAKER_DEFAULT
+    db.add(TrainingMessage(session_id=session.id, role="sales", content=payload.content, speaker=sales_speaker))
     db.commit()
     db.refresh(session)
 
@@ -172,7 +202,10 @@ async def stream_message(
         "template_id": session.template_id or "",
         "background": session.background,
     }
-    messages_snapshot = [{"role": m.role, "content": m.content} for m in session.messages]
+    messages_snapshot = [
+        {"role": m.role, "content": m.content, "speaker": getattr(m, "speaker", SPEAKER_DEFAULT)}
+        for m in session.messages
+    ]
     knowledge = find_relevant_knowledge(db, session)
     knowledge_snapshot = knowledge  # list of KnowledgeItem objects, read-only
 
@@ -195,24 +228,32 @@ async def stream_message(
                 yield f"event: token\ndata: {json.dumps({'text': chunk}, ensure_ascii=False)}\n\n"
 
             full_text = "".join(collected_text).strip()
+            speaker, clean_text = _split_speaker(full_text)
 
             # 将完整回复存入数据库（使用独立会话）
-            message = TrainingMessage(session_id=session_id_val, role="customer", content=full_text)
+            message = TrainingMessage(
+                session_id=session_id_val,
+                role="customer",
+                content=clean_text,
+                speaker=speaker,
+            )
             gen_db.add(message)
             gen_db.commit()
             gen_db.refresh(message)
-            yield f"event: done\ndata: {json.dumps({'id': message.id, 'content': full_text}, ensure_ascii=False)}\n\n"
+            yield f"event: done\ndata: {json.dumps({'id': message.id, 'content': clean_text, 'role': 'customer', 'speaker': speaker}, ensure_ascii=False)}\n\n"
 
-            # Phase 2: 流式推送 TTS 音频
-            if voice.configured and full_text:
+            # Phase 2: 流式推送 TTS 音频（按 speaker 选音色）
+            if voice.configured and clean_text:
                 style = get_tts_style(
                     template_id=session_snapshot["template_id"],
                     difficulty=session_snapshot["customer_difficulty"],
                     personality=session_snapshot["customer_personality"],
+                    speaker=speaker,
                 )
+                voice_name = get_speaker_voice(speaker)
                 try:
-                    async for pcm_chunk in voice.synthesize_stream(full_text, style):
-                        yield f"event: audio\ndata: {json.dumps({'data': _b64.b64encode(pcm_chunk).decode()})}\n\n"
+                    async for pcm_chunk in voice.synthesize_stream(clean_text, style, voice=voice_name):
+                        yield f"event: audio\ndata: {json.dumps({'data': _b64.b64encode(pcm_chunk).decode(), 'speaker': speaker}, ensure_ascii=False)}\n\n"
                 except (VoiceTimeoutError, VoiceError) as exc:
                     logger.warning("TTS 流式合成失败：%s", exc)
                     yield f"event: tts_error\ndata: {json.dumps({'error': str(exc)}, ensure_ascii=False)}\n\n"

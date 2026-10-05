@@ -140,6 +140,7 @@ class TrainingMessage(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     session_id: Mapped[int] = mapped_column(ForeignKey("training_sessions.id"))
     role: Mapped[str] = mapped_column(String(20))
+    speaker: Mapped[str] = mapped_column(String(40), default="buyer")
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
