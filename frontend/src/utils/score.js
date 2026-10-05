@@ -1,4 +1,4 @@
-export const SCORE_DIMENSION_ORDER = ["SOP执行", "客户洞察", "需求澄清", "异议处理", "价值表达", "推进动作", "话术质量"];
+export const SCORE_DIMENSION_ORDER = ["工艺探询", "产品选型", "技术边界", "异议处理", "故障归因", "价值合规", "推进动作"];
 
 export function scoreToneClass(value) {
   const score = Number(value) || 0;
