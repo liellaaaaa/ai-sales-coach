@@ -118,6 +118,34 @@ function ReportGeneratingPanel({ salesTurns }) {
   );
 }
 
+function LiveCoachBar({ tips, onClose }) {
+  if (!tips || tips.length === 0) return null;
+  return (
+    <div className="live-coach-bar" role="status" aria-live="polite">
+      <div className="live-coach-head">
+        <span className="live-coach-label">实时教练</span>
+        <button type="button" className="live-coach-close" aria-label="关闭实时教练" onClick={onClose}>×</button>
+      </div>
+      <ul className="live-coach-list">
+        {tips.map((tip, index) => (
+          <li key={`${index}-${tip.slice(0, 16)}`}>{tip}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function BargeInBar({ onInterrupt }) {
+  return (
+    <div className="barge-in-bar" role="status">
+      <span className="barge-in-hint">客户正在说话，可打断后直接发言</span>
+      <button type="button" className="barge-in-button" onClick={onInterrupt}>
+        打断说话
+      </button>
+    </div>
+  );
+}
+
 export default function Chat({ session, onSession, onReport, onError, onReset, voiceEnabled }) {
   const [text, setText] = useState("");
   const [showExample, setShowExample] = useState(false);
@@ -131,11 +159,17 @@ export default function Chat({ session, onSession, onReport, onError, onReset, v
   const [streamingText, setStreamingText] = useState("");
   const [streamingActive, setStreamingActive] = useState(false);
   const [streamingSpeaker, setStreamingSpeaker] = useState("buyer");
+  const [liveTips, setLiveTips] = useState([]);
   const playerRef = useRef(null);
   const pcmPlayerRef = useRef(null);
   const audioCache = useRef(new Map());
   const inputRef = useRef(null);
   const suggestionRef = useRef(null);
+  const streamAbortRef = useRef(null);
+  const micControlRef = useRef(null);
+  const sendSeqRef = useRef(0);
+  const sendingRef = useRef(false);
+  const liveTipSeqRef = useRef(0);
   const salesTurns = useMemo(() => session?.messages?.filter((msg) => msg.role === "sales").length || 0, [session]);
   const exampleReply = standardReplies[session?.goal] || standardReplies["价格异议"];
 
@@ -147,11 +181,54 @@ export default function Chat({ session, onSession, onReport, onError, onReset, v
     setStreamingText("");
     setStreamingActive(false);
     setStreamingSpeaker("buyer");
+    setLiveTips([]);
     return () => {
+      streamAbortRef.current?.abort();
+      streamAbortRef.current = null;
       playerRef.current?.dispose();
       pcmPlayerRef.current?.dispose();
     };
   }, [session?.id]);
+
+  /** 停掉 AudioPlayer + PCMStreamPlayer，重置 playback 态 */
+  function stopAllPlayback() {
+    playerRef.current?.stop();
+    pcmPlayerRef.current?.stop();
+    if (pcmPlayerRef.current) pcmPlayerRef.current.onEnded = null;
+    setPlayback({ key: "", status: "idle" });
+  }
+
+  /** 打断：abort 流式请求 + 停掉全部播放 */
+  function interruptClient() {
+    const controller = streamAbortRef.current;
+    if (controller) {
+      streamAbortRef.current = null;
+      try {
+        controller.abort();
+      } catch {
+        // 忽略 abort 异常
+      }
+    }
+    stopAllPlayback();
+  }
+
+  /** 旁路教练：并行拉 live-tip，失败静默降级 */
+  async function fetchLiveTip(context) {
+    const seq = ++liveTipSeqRef.current;
+    try {
+      const data = await api(`/training/sessions/${session.id}/live-tip`, {
+        method: "POST",
+        body: JSON.stringify({ context }),
+      });
+      if (seq !== liveTipSeqRef.current) return;
+      const tips = Array.isArray(data?.tips)
+        ? data.tips.map((tip) => String(tip || "").trim()).filter(Boolean).slice(0, 2)
+        : [];
+      setLiveTips(tips);
+    } catch (err) {
+      console.debug("live-tip 不可用:", err?.message || err);
+    }
+  }
 
   function toggleAutoRead(next) {
     setAutoRead(next);
@@ -171,6 +248,7 @@ export default function Chat({ session, onSession, onReport, onError, onReset, v
       setPlayback({ key: "", status: "idle" });
       return;
     }
+    stopAllPlayback();
     try {
       let blob = audioCache.current.get(key);
       if (!blob) {
@@ -205,8 +283,20 @@ export default function Chat({ session, onSession, onReport, onError, onReset, v
   if (!session) return <Empty title="还没有训练" text="先从开始训练创建一次会话。" />;
 
   async function send(forcedContent) {
+    const isForced = forcedContent != null;
     const content = (forcedContent ?? text).trim();
-    if (!content || isSending || isFinishing) return;
+    if (!content || isFinishing) return;
+    // 文字发送防重复；语音/打断路径可抢占进行中的回合
+    if (!isForced && sendingRef.current) return;
+
+    // 打断进行中的客户流式回复/播报，支持 barge-in 快轮次
+    interruptClient();
+
+    const seq = ++sendSeqRef.current;
+    const controller = new AbortController();
+    streamAbortRef.current = controller;
+    sendingRef.current = true;
+
     setText("");
     setSuggestion(null);
     setShowExample(false);
@@ -214,10 +304,10 @@ export default function Chat({ session, onSession, onReport, onError, onReset, v
     setStreamingText("");
     setStreamingActive(true);
     setStreamingSpeaker("buyer");
-    playerRef.current?.stop();
-    pcmPlayerRef.current?.stop();
-    setPlayback({ key: "", status: "idle" });
     onSession({ ...session, messages: [...session.messages, { role: "sales", content }] });
+
+    // 旁路教练：业务员发出后并行拉取，不阻塞对话
+    void fetchLiveTip("after_sales");
 
     try {
       let hasAudio = false;
@@ -225,9 +315,11 @@ export default function Chat({ session, onSession, onReport, onError, onReset, v
 
       await apiStream(`/training/sessions/${session.id}/stream`, { content }, {
         onToken(t) {
+          if (seq !== sendSeqRef.current) return;
           setStreamingText((prev) => prev + t);
         },
         onDone(payload) {
+          if (seq !== sendSeqRef.current) return;
           setStreamingActive(false);
           if (payload?.speaker) {
             doneSpeaker = payload.speaker;
@@ -235,6 +327,7 @@ export default function Chat({ session, onSession, onReport, onError, onReset, v
           }
         },
         onAudio(pcmBase64) {
+          if (seq !== sendSeqRef.current) return;
           if (!voiceEnabled || !autoRead) return;
           if (!hasAudio) {
             hasAudio = true;
@@ -243,14 +336,19 @@ export default function Chat({ session, onSession, onReport, onError, onReset, v
           pcmPlayerRef.current?.appendChunk(pcmBase64);
         },
         onComplete() {
+          if (seq !== sendSeqRef.current) return;
           if (hasAudio) {
             pcmPlayerRef.current?.markStreamEnd();
             pcmPlayerRef.current.onEnded = () => {
-              setPlayback({ key: "", status: "idle" });
+              setPlayback((current) =>
+                current.key === `stream:${session.id}` ? { key: "", status: "idle" } : current
+              );
             };
           }
         },
-      });
+      }, { signal: controller.signal });
+
+      if (seq !== sendSeqRef.current) return;
 
       const updated = await api(`/training/sessions/${session.id}`);
       const merged = doneSpeaker
@@ -267,24 +365,49 @@ export default function Chat({ session, onSession, onReport, onError, onReset, v
       onSession(merged);
       setStreamingText("");
       setStreamingActive(false);
+      // 客户回复完成后再拉一次教练提示
+      void fetchLiveTip("after_customer");
     } catch (err) {
+      const aborted = err?.name === "AbortError" || controller.signal.aborted;
+      if (aborted) {
+        // 打断收尾：不弹错、不降级
+        console.debug("流式回复已打断:", err?.message || err);
+        if (seq === sendSeqRef.current) {
+          setStreamingText("");
+          setStreamingActive(false);
+          try {
+            const updated = await api(`/training/sessions/${session.id}`);
+            if (seq === sendSeqRef.current) onSession(updated);
+          } catch {
+            // 忽略刷新失败
+          }
+        }
+        return;
+      }
       // 流式失败时降级到旧的非流式 API
       console.warn("流式端点失败，降级到非流式:", err.message);
+      if (seq !== sendSeqRef.current) return;
       setStreamingText("");
       setStreamingActive(false);
       try {
         await api(`/training/sessions/${session.id}/messages`, { method: "POST", body: JSON.stringify({ content }) });
         const updated = await api(`/training/sessions/${session.id}`);
+        if (seq !== sendSeqRef.current) return;
         onSession(updated);
         if (voiceEnabled && autoRead) {
           const lastIndex = updated.messages.map((m) => m.role).lastIndexOf("customer");
           if (lastIndex >= 0) speakMessage(updated.messages[lastIndex], lastIndex);
         }
+        void fetchLiveTip("after_customer");
       } catch (fallbackErr) {
-        onError(fallbackErr.message);
+        if (seq === sendSeqRef.current) onError(fallbackErr.message);
       }
     } finally {
-      setIsSending(false);
+      if (streamAbortRef.current === controller) streamAbortRef.current = null;
+      if (seq === sendSeqRef.current) {
+        sendingRef.current = false;
+        setIsSending(false);
+      }
     }
   }
 
@@ -353,6 +476,16 @@ export default function Chat({ session, onSession, onReport, onError, onReset, v
           )}
         </div>
         <div className="chat-actions">
+          {liveTips.length > 0 && (
+            <LiveCoachBar tips={liveTips} onClose={() => setLiveTips([])} />
+          )}
+          {voiceEnabled && playback.status === "playing" && (
+            <BargeInBar
+              onInterrupt={() => {
+                micControlRef.current?.startRecording();
+              }}
+            />
+          )}
           <div className="composer-tools">
             <span>{streamingActive ? "客户正在回复..." : isSending ? "客户正在思考你的回应..." : salesTurns >= 3 ? "已满足验收轮次，可以进入复盘。" : "建议至少完成 3 轮回应。"}</span>
             {voiceEnabled && <AutoReadToggle enabled={autoRead} onChange={toggleAutoRead} />}
@@ -377,13 +510,15 @@ export default function Chat({ session, onSession, onReport, onError, onReset, v
           <div className={`composer-row ${voiceEnabled ? "has-voice" : ""}`}>
             {voiceEnabled && (
               <MicButton
-                disabled={isSending || isFinishing}
+                disabled={isFinishing}
                 onError={onError}
                 onRecordingChange={setIsVoiceRecording}
                 onResult={(recognized) => send(recognized)}
+                onStopAllPlayback={interruptClient}
+                controlRef={micControlRef}
               />
             )}
-            <input ref={inputRef} value={text} disabled={isSending || isFinishing} onChange={(e) => setText(e.target.value)} placeholder={isSending ? "等待客户回复中" : isVoiceRecording ? "正在录音，再次点击麦克风结束" : "输入你的回应"} onKeyDown={(e) => { if (e.key === "Enter") send(); }} />
+            <input ref={inputRef} value={text} disabled={isSending || isFinishing} onChange={(e) => setText(e.target.value)} placeholder={isSending ? "等待客户回复中" : isVoiceRecording ? "正在录音，松开发送（再次点击也可结束）" : "输入你的回应"} onKeyDown={(e) => { if (e.key === "Enter") send(); }} />
             <button className="send-button" disabled={!text.trim() || isSending || isFinishing} onClick={() => send()}>{isSending ? "发送中" : "发送"}</button>
           </div>
           {isFinishing && <ReportGeneratingPanel salesTurns={salesTurns} />}

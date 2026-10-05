@@ -216,6 +216,11 @@ export class AudioPlayer {
     audio.play().catch(settle);
   }
 
+  /** 是否有音频正在播放（含加载中） */
+  isPlaying() {
+    return Boolean(this.audio);
+  }
+
   stop() {
     if (!this.audio) return;
     const audio = this.audio;
@@ -335,9 +340,15 @@ export class PCMStreamPlayer {
     }
   }
 
+  /** 流式是否仍有待播/在播音频 */
+  isPlaying() {
+    return this.playing || this.sources.length > 0;
+  }
+
   /** 停止播放 */
   stop() {
     this.playing = false;
+    this.onEnded = null;
     if (this._endedTimer) {
       clearTimeout(this._endedTimer);
       this._endedTimer = null;

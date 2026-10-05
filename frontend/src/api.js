@@ -59,20 +59,38 @@ export async function apiAudio(path, body) {
   return new Blob([buffer], { type: response.headers.get("content-type") || "audio/wav" });
 }
 
+function toAbortError(err) {
+  if (err && err.name === "AbortError") return err;
+  return new DOMException("Aborted", "AbortError");
+}
+
 /**
  * SSE 流式消费：逐事件回调。
  * handlers: { onToken(text), onDone({id, content}), onAudio(pcmBase64), onError(msg), onComplete() }
+ * options: { signal } — AbortSignal，中断后抛出 AbortError，不触发 onError
  */
-export async function apiStream(path, body, handlers = {}) {
+export async function apiStream(path, body, handlers = {}, options = {}) {
+  const { signal } = options;
   const token = localStorage.getItem("salesCoachToken");
-  const response = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify(body),
-  });
+
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (err) {
+    if (signal?.aborted || err?.name === "AbortError") {
+      console.debug("apiStream: 请求已中断（发起前）");
+      throw toAbortError(err);
+    }
+    throw err;
+  }
   if (!response.ok) {
     const errBody = await response.json().catch(() => ({}));
     throw new Error(errBody.detail || "请求失败");
@@ -82,55 +100,68 @@ export async function apiStream(path, body, handlers = {}) {
   const decoder = new TextDecoder();
   let buffer = "";
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
 
-    // SSE 事件以 \n\n 分隔
-    const parts = buffer.split("\n\n");
-    buffer = parts.pop(); // 保留未完成的部分
+      // SSE 事件以 \n\n 分隔
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop(); // 保留未完成的部分
 
-    for (const part of parts) {
-      if (!part.trim()) continue;
-      let eventType = "message";
-      let data = "";
-      for (const line of part.split("\n")) {
-        if (line.startsWith("event: ")) {
-          eventType = line.slice(7);
-        } else if (line.startsWith("data: ")) {
-          data = line.slice(6);
+      for (const part of parts) {
+        if (!part.trim()) continue;
+        let eventType = "message";
+        let data = "";
+        for (const line of part.split("\n")) {
+          if (line.startsWith("event: ")) {
+            eventType = line.slice(7);
+          } else if (line.startsWith("data: ")) {
+            data = line.slice(6);
+          }
         }
-      }
-      try {
-        const parsed = data ? JSON.parse(data) : {};
-        switch (eventType) {
-          case "token":
-            handlers.onToken?.(parsed.text || "");
-            break;
-          case "done":
-            handlers.onDone?.(parsed);
-            break;
-          case "audio":
-            handlers.onAudio?.(parsed.data || "");
-            break;
-          case "tts_error":
-            console.warn("TTS error:", parsed.error);
-            break;
-          case "error":
-            handlers.onError?.(parsed.error || "流式处理异常");
-            break;
-          case "complete":
-            handlers.onComplete?.();
-            break;
-          default:
-            break;
+        try {
+          const parsed = data ? JSON.parse(data) : {};
+          switch (eventType) {
+            case "token":
+              handlers.onToken?.(parsed.text || "");
+              break;
+            case "done":
+              handlers.onDone?.(parsed);
+              break;
+            case "audio":
+              handlers.onAudio?.(parsed.data || "");
+              break;
+            case "tts_error":
+              console.warn("TTS error:", parsed.error);
+              break;
+            case "error":
+              handlers.onError?.(parsed.error || "流式处理异常");
+              break;
+            case "complete":
+              handlers.onComplete?.();
+              break;
+            default:
+              break;
+          }
+        } catch {
+          // 忽略解析错误
         }
-      } catch {
-        // 忽略解析错误
       }
     }
+    // 如果流结束但没收到 complete 事件，也触发 onComplete
+    handlers.onComplete?.();
+  } catch (err) {
+    if (signal?.aborted || err?.name === "AbortError") {
+      console.debug("apiStream: 流式请求已中断");
+      try {
+        reader.cancel();
+      } catch {
+        // 忽略 cancel 失败
+      }
+      throw toAbortError(err);
+    }
+    throw err;
   }
-  // 如果流结束但没收到 complete 事件，也触发 onComplete
-  handlers.onComplete?.();
 }

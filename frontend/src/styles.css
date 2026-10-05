@@ -6711,6 +6711,17 @@ fieldset:disabled button:hover {
     min-height: 44px;
     padding: 0 12px;
   }
+  .barge-in-bar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .barge-in-button {
+    min-height: 36px;
+    width: 100%;
+  }
+  .live-coach-bar {
+    padding: 10px;
+  }
   .review-readiness {
     padding: 12px;
     gap: 10px;
@@ -7228,4 +7239,169 @@ fieldset:disabled button:hover {
 @keyframes cursor-blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
+}
+
+/* ===== 按住说话 / 打断 ===== */
+.mic-button {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.mic-button.is-holding {
+  border-color: rgba(217, 83, 79, 0.7);
+  background: #fdecea;
+  color: #c5221f;
+  box-shadow: 0 0 0 3px rgba(217, 83, 79, 0.18);
+}
+
+.mic-button.is-holding.is-warning {
+  border-color: rgba(217, 160, 51, 0.7);
+  background: #fdf3e0;
+  color: #b26a00;
+  box-shadow: 0 0 0 3px rgba(217, 160, 51, 0.18);
+}
+
+.barge-in-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px solid rgba(217, 83, 79, 0.28);
+  border-radius: 12px;
+  background: #fdf1ef;
+  color: #8c2f2b;
+  font-size: 12.5px;
+  animation: bargeInFade 180ms var(--ease);
+}
+
+.barge-in-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.barge-in-hint::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 999px;
+  background: #d93025;
+  animation: micPulse 1.4s ease-in-out infinite;
+}
+
+.barge-in-button {
+  flex: none;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #e0524c, #c5221f);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 760;
+  white-space: nowrap;
+  box-shadow: 0 8px 18px rgba(197, 34, 31, 0.22);
+  transition: transform 180ms var(--ease), box-shadow 180ms var(--ease), background 180ms var(--ease);
+}
+
+.barge-in-button:hover {
+  background: linear-gradient(180deg, #e55f59, #b01c19);
+  box-shadow: 0 10px 22px rgba(197, 34, 31, 0.28);
+}
+
+.barge-in-button:active {
+  transform: scale(0.98);
+}
+
+@keyframes bargeInFade {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== 实时教练条 ===== */
+.live-coach-bar {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(191, 211, 244, 0.9);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #f5f9ff, #eef4fd);
+  color: #243247;
+  animation: bargeInFade 180ms var(--ease);
+}
+
+.live-coach-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.live-coach-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #185abc;
+  font-size: 11px;
+  font-weight: 780;
+  letter-spacing: 0.02em;
+}
+
+.live-coach-label::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #1a73e8;
+  box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.16);
+}
+
+.live-coach-close {
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  padding: 0;
+  color: #8993a3;
+  font-size: 16px;
+  line-height: 1;
+  box-shadow: none;
+}
+
+.live-coach-close:hover {
+  background: #e5edfa;
+  color: #1f2937;
+}
+
+.live-coach-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.live-coach-list li {
+  position: relative;
+  padding-left: 12px;
+  color: #30343b;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.live-coach-list li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.55em;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: #7aa7e8;
 }
