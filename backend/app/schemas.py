@@ -184,6 +184,14 @@ class SuggestionOut(BaseModel):
     notice: str = "AI 推荐回复仅用于训练参考，并不完全适用于实际业务场景。"
 
 
+class LiveTipIn(BaseModel):
+    context: str = "after_sales"
+
+
+class LiveTipOut(BaseModel):
+    tips: list[str]
+
+
 class TrainingSessionOut(BaseModel):
     id: int
     training_type: str

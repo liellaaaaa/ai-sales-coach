@@ -290,6 +290,106 @@ class LLMClient:
             return fallback
         return data.strip().strip('"“”') or fallback
 
+    async def live_tip(self, session, messages, knowledge, context: str = "after_sales") -> list[str]:
+        """返回 1-2 条短提示。基于最新对话，提醒工艺探询/选型风险/推进动作/禁用话术。"""
+        fallback = self._fallback_live_tips()
+        config = get_effective_llm_config()
+        if not self._configured(config):
+            return fallback
+        prompt = self._live_tip_prompt(session, messages, knowledge, context=context)
+        try:
+            data = await self._chat([{"sender_type": "USER", "text": prompt}], config, max_tokens=200)
+        except Exception as exc:
+            logger.warning("live_tip 调用失败：%s", exc)
+            return fallback
+        tips = self._parse_live_tips(data)
+        return tips or fallback
+
+    def _fallback_live_tips(self) -> list[str]:
+        return ["补问水质与水温", "把下一步收成具体人/时间"]
+
+    def _msg_field(self, msg: Any, name: str, default: Any = "") -> Any:
+        if isinstance(msg, dict):
+            return msg.get(name, default)
+        return getattr(msg, name, default)
+
+    def _live_tip_prompt(self, session: Any, messages: Any, knowledge: Any, context: str = "after_sales") -> str:
+        msgs = list(messages or [])
+        last_role = self._msg_field(msgs[-1], "role", "") if msgs else ""
+        # context 优先：前端明确知道当前是业务员刚说完还是客户刚说完
+        if context == "after_customer":
+            moment = "客户刚说完，业务员马上要接话"
+        elif context == "after_sales":
+            moment = "业务员刚说完，客户还在生成/播报"
+        else:
+            moment = (
+                "客户刚说完，业务员马上要接话"
+                if last_role == "customer"
+                else "业务员刚说完，客户还在生成/播报"
+            )
+        lines = []
+        for msg in msgs[-8:]:
+            role = self._msg_field(msg, "role", "")
+            content = self._msg_field(msg, "content", "")
+            label = "业务员" if role == "sales" else "客户"
+            lines.append(f"{label}：{str(content)[:120]}")
+        transcript = "\n".join(lines) or "（暂无对话）"
+        cards_text = _product_cards_text(session, knowledge if isinstance(knowledge, list) else None)
+        cards_block = f"\n产品卡：\n{cards_text}" if cards_text else ""
+        return (
+            "你是纺织助剂销售陪练的旁路实时教练，场景是固色剂/湿摩擦提升剂/硅油等助剂。"
+            f"当前时机：{moment}。请给业务员 1-2 条立刻可做的短提示。\n"
+            "只输出 2 行以内，一行一条提示，每条不超过 20 个汉字，不要编号、不要解释、不要 JSON。\n"
+            "提示必须可直接照做，优先提醒：工艺探询（水质/水温/工艺/布种）、选型风险（高硬高温勿只推833）、"
+            "技术边界（涂料化纤难提升、大货小样差异、同浴沉淀）、推进动作（收成具体人/时间/条件）、禁用话术（勿瞎承诺/勿空泛保证）。\n"
+            f"训练：{getattr(session, 'training_type', '')} / {getattr(session, 'stage', '')} / {getattr(session, 'goal', '')}\n"
+            f"客户：{getattr(session, 'customer_name', '')} / {getattr(session, 'customer_type', '')}\n"
+            f"最近对话：\n{transcript}\n"
+            f"{cards_block}"
+        )
+
+    def _parse_live_tips(self, text: str) -> list[str]:
+        raw = _strip_thinking(text or "").strip()
+        if not raw:
+            return []
+        candidate = raw
+        if candidate.startswith("```"):
+            candidate = candidate.removeprefix("```json").removeprefix("```").strip()
+            candidate = candidate.removesuffix("```").strip()
+        tips: list[str] = []
+        for snippet in (candidate, raw):
+            start = snippet.find("[")
+            end = snippet.rfind("]")
+            if start == -1 or end <= start:
+                continue
+            try:
+                data = json.loads(snippet[start : end + 1])
+            except Exception:
+                continue
+            if isinstance(data, list):
+                tips = [str(item).strip() for item in data if str(item).strip()]
+                break
+        if not tips:
+            for line in raw.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                line = re.sub(r"^[-•*·]?\s*\d+[.、)）:：]\s*", "", line).strip()
+                line = line.strip().strip('"“”').strip()
+                if line:
+                    tips.append(line)
+        cleaned = []
+        for tip in tips:
+            tip = " ".join(str(tip).split()).strip('"“”').strip()
+            if not tip:
+                continue
+            if len(tip) > 40:
+                tip = tip[:40]
+            cleaned.append(tip)
+            if len(cleaned) >= 2:
+                break
+        return cleaned
+
     async def analyze_document_metadata(self, filename: str, raw_text: str, fallback: dict[str, Any]) -> dict[str, Any]:
         config = get_effective_llm_config()
         if not self._configured(config):

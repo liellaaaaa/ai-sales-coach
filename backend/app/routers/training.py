@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models import TrainingMessage, TrainingReport, TrainingSession, User
 from app.schemas import (
+    LiveTipIn,
+    LiveTipOut,
     MessageIn,
     MessageOut,
     ReportOut,
@@ -283,6 +285,35 @@ async def suggest_reply(session_id: int, db: Session = Depends(get_db), user: Us
     knowledge = find_relevant_knowledge(db, session)
     content = await LLMClient().suggested_reply(session, session.messages, knowledge)
     return SuggestionOut(content=content)
+
+
+@router.post("/sessions/{session_id}/live-tip", response_model=LiveTipOut)
+async def live_tip(
+    session_id: int,
+    payload: LiveTipIn | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """旁路实时教练：对话进行中异步取 1-2 条短提示，不阻塞主对话。"""
+    session = db.get(TrainingSession, session_id)
+    if not session or not _can_read(user, session):
+        raise HTTPException(status_code=404, detail="训练不存在")
+    if session.status == "completed":
+        raise HTTPException(status_code=400, detail="训练已完成")
+    context = (payload.context if payload else "after_sales") or "after_sales"
+    knowledge = find_relevant_knowledge(db, session)
+    try:
+        tips = await LLMClient().live_tip(session, session.messages, knowledge, context=context)
+    except Exception as exc:
+        logger.warning("live-tip 生成失败 context=%s：%s", context, exc)
+        tips = []
+    if not isinstance(tips, list):
+        tips = []
+    tips = [str(t).strip() for t in tips if str(t).strip()][:2]
+    if not tips:
+        tips = ["补问水质与水温", "把下一步收成具体人/时间"][:2]
+    logger.info("live-tip session=%s context=%s tips=%s", session_id, context, len(tips))
+    return LiveTipOut(tips=tips)
 
 
 @router.post("/sessions/{session_id}/finish", response_model=ReportOut)

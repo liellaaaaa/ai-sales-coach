@@ -543,6 +543,15 @@ def run():
     assert retry_body["customer_concern"] == "价格"
     assert retry_body["template_id"] == "price-objection"
     assert retry_body["setup_context"]["guide_flow"] == "scenario_coaching"
+    live_tip = client.post(
+        f"/api/training/sessions/{session['id']}/live-tip",
+        headers=sales_headers,
+        json={"context": "after_sales"},
+    )
+    assert live_tip.status_code == 200, live_tip.text
+    tips = live_tip.json().get("tips") or []
+    assert 1 <= len(tips) <= 2, tips
+    assert all(isinstance(t, str) and t.strip() for t in tips), tips
     report = finish_session(client, sales_headers, session["id"])
     assert "supervisor_comment" not in report
     assert any(item.get("source") for item in report["citations"])
@@ -555,10 +564,18 @@ def run():
 
     assert_voice_flow(client, sales_headers)
 
+    # live-tip 不允许在已完成会话上取
+    live_tip_done = client.post(
+        f"/api/training/sessions/{session['id']}/live-tip",
+        headers=sales_headers,
+        json={"context": "after_customer"},
+    )
+    assert live_tip_done.status_code == 400, live_tip_done.text
+
     # Restore env-based API key
     settings.deepseek_api_key = _saved_api_key
 
-    print("smoke ok: documents, chunks, retrieval, report, voice")
+    print("smoke ok: documents, chunks, retrieval, report, voice, live-tip")
 
 
 if __name__ == "__main__":
