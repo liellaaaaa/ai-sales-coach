@@ -34,6 +34,21 @@ export class AudioRecorder {
     );
   }
 
+  /** 细分不支持的原因，返回用户可读的提示 */
+  static supportDetail() {
+    if (typeof navigator === "undefined") return "当前环境不支持录音";
+    if (!window.isSecureContext) {
+      return "录音需要安全上下文（HTTPS 或 localhost），请通过 localhost 访问或启用 HTTPS";
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      return "当前浏览器不支持录音，请使用 Chrome 或 Edge";
+    }
+    if (typeof window.MediaRecorder === "undefined") {
+      return "当前浏览器不支持 MediaRecorder，请使用 Chrome 或 Edge";
+    }
+    return null;
+  }
+
   _setState(state) {
     this.state = state;
     this.onStateChange(state);
@@ -42,7 +57,7 @@ export class AudioRecorder {
   async start() {
     if (this.state === RECORDER_STATES.recording || this.state === RECORDER_STATES.warning) return;
     if (!AudioRecorder.supported()) {
-      throw new Error("当前浏览器不支持录音，请使用 Chrome 或 Edge");
+      throw new Error(AudioRecorder.supportDetail());
     }
     this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     this.chunks = [];

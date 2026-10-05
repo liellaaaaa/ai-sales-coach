@@ -9,6 +9,7 @@ export function MicButton({ disabled, onResult, onError, onRecordingChange }) {
   callbacksRef.current = { onResult, onError, onRecordingChange };
   const [state, setState] = useState(RECORDER_STATES.idle);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [supportError] = useState(() => AudioRecorder.supportDetail());
 
   async function deliver(wavBlob) {
     setIsTranscribing(true);
@@ -68,13 +69,34 @@ export function MicButton({ disabled, onResult, onError, onRecordingChange }) {
     }
   }
 
-  const label = isTranscribing
-    ? "识别中…"
-    : recording
-      ? state === RECORDER_STATES.warning
-        ? "即将到限，点击结束"
-        : "点击结束"
-      : "语音输入";
+  const label = supportError
+    ? "不支持录音"
+    : isTranscribing
+      ? "识别中…"
+      : recording
+        ? state === RECORDER_STATES.warning
+          ? "即将到限，点击结束"
+          : "点击结束"
+        : "语音输入";
+
+  if (supportError) {
+    return (
+      <button
+        type="button"
+        className="mic-button is-unsupported"
+        disabled
+        title={supportError}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 4a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V7a3 3 0 0 1 3-3z"></path>
+          <path d="M6 11a6 6 0 0 0 12 0"></path>
+          <path d="M12 17v3"></path>
+          <line x1="4" y1="4" x2="20" y2="20" stroke="currentColor" strokeWidth="2" />
+        </svg>
+        <span>{label}</span>
+      </button>
+    );
+  }
 
   return (
     <button
@@ -94,7 +116,14 @@ export function MicButton({ disabled, onResult, onError, onRecordingChange }) {
   );
 }
 
-export function PlayButton({ status, onClick }) {
+const SPEAKER_TITLES = {
+  buyer: "采购",
+  tech: "技术主管",
+  boss: "厂长",
+};
+
+export function PlayButton({ status, onClick, speaker }) {
+  const speakerLabel = SPEAKER_TITLES[speaker] || SPEAKER_TITLES.buyer;
   const title =
     status === "loading"
       ? "正在合成语音"
@@ -102,7 +131,7 @@ export function PlayButton({ status, onClick }) {
         ? "停止播放"
         : status === "error"
           ? "语音合成失败，点击重试"
-          : "播放这条回复";
+          : `播放这条回复（${speakerLabel}音色）`;
   return (
     <button
       type="button"

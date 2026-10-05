@@ -5,6 +5,21 @@ import { AutoReadToggle, MicButton, PlayButton } from "../voice";
 import { standardReplies } from "../constants/training";
 import { Empty } from "../components/Layout";
 
+const SPEAKER_META = {
+  buyer: { label: "采购", className: "speaker-buyer" },
+  tech: { label: "技术主管", className: "speaker-tech" },
+  boss: { label: "厂长", className: "speaker-boss" },
+};
+
+function resolveSpeaker(speaker) {
+  return SPEAKER_META[speaker] || SPEAKER_META.buyer;
+}
+
+function SpeakerBadge({ speaker }) {
+  const meta = resolveSpeaker(speaker);
+  return <span className={`speaker-badge ${meta.className}`}>{meta.label}</span>;
+}
+
 function ReviewReadinessPanel({ salesTurns, isFinishing, onReset, onFinish }) {
   const ready = salesTurns >= 3;
   const remaining = Math.max(3 - salesTurns, 0);
@@ -115,6 +130,7 @@ export default function Chat({ session, onSession, onReport, onError, onReset, v
   const [playback, setPlayback] = useState({ key: "", status: "idle" });
   const [streamingText, setStreamingText] = useState("");
   const [streamingActive, setStreamingActive] = useState(false);
+  const [streamingSpeaker, setStreamingSpeaker] = useState("buyer");
   const playerRef = useRef(null);
   const pcmPlayerRef = useRef(null);
   const audioCache = useRef(new Map());
@@ -130,6 +146,7 @@ export default function Chat({ session, onSession, onReport, onError, onReset, v
     setPlayback({ key: "", status: "idle" });
     setStreamingText("");
     setStreamingActive(false);
+    setStreamingSpeaker("buyer");
     return () => {
       playerRef.current?.dispose();
       pcmPlayerRef.current?.dispose();
@@ -142,7 +159,8 @@ export default function Chat({ session, onSession, onReport, onError, onReset, v
   }
 
   function messageCacheKey(message, index) {
-    return `${session.id}:${message.id ?? index}`;
+    const speaker = message.speaker || "buyer";
+    return `${session.id}:${message.id ?? index}:${speaker}`;
   }
 
   async function speakMessage(message, index) {
@@ -157,7 +175,10 @@ export default function Chat({ session, onSession, onReport, onError, onReset, v
       let blob = audioCache.current.get(key);
       if (!blob) {
         setPlayback({ key, status: "loading" });
-        blob = await apiAudio("/voice/speech", { text: (message.content || "").trim() });
+        blob = await apiAudio("/voice/speech", {
+          text: (message.content || "").trim(),
+          speaker: message.speaker || "buyer",
+        });
         if (!blob || blob.size === 0) throw new Error("语音数据为空");
         audioCache.current.set(key, blob);
       }
@@ -192,6 +213,7 @@ export default function Chat({ session, onSession, onReport, onError, onReset, v
     setIsSending(true);
     setStreamingText("");
     setStreamingActive(true);
+    setStreamingSpeaker("buyer");
     playerRef.current?.stop();
     pcmPlayerRef.current?.stop();
     setPlayback({ key: "", status: "idle" });
@@ -199,13 +221,18 @@ export default function Chat({ session, onSession, onReport, onError, onReset, v
 
     try {
       let hasAudio = false;
+      let doneSpeaker = null;
 
       await apiStream(`/training/sessions/${session.id}/stream`, { content }, {
         onToken(t) {
           setStreamingText((prev) => prev + t);
         },
-        onDone() {
+        onDone(payload) {
           setStreamingActive(false);
+          if (payload?.speaker) {
+            doneSpeaker = payload.speaker;
+            setStreamingSpeaker(payload.speaker);
+          }
         },
         onAudio(pcmBase64) {
           if (!voiceEnabled || !autoRead) return;
@@ -226,7 +253,18 @@ export default function Chat({ session, onSession, onReport, onError, onReset, v
       });
 
       const updated = await api(`/training/sessions/${session.id}`);
-      onSession(updated);
+      const merged = doneSpeaker
+        ? {
+            ...updated,
+            messages: (updated.messages || []).map((msg, idx, arr) => {
+              if (msg.role !== "customer") return msg;
+              const isLastCustomer = arr.slice(idx + 1).every((m) => m.role !== "customer");
+              if (!isLastCustomer) return msg;
+              return { ...msg, speaker: msg.speaker || doneSpeaker };
+            }),
+          }
+        : updated;
+      onSession(merged);
       setStreamingText("");
       setStreamingActive(false);
     } catch (err) {
@@ -285,12 +323,16 @@ export default function Chat({ session, onSession, onReport, onError, onReset, v
         <div className="chat-log">
           {session.messages.map((msg, index) => (
             <div key={msg.id ?? index} className={`msg ${msg.role === "sales" ? "sales" : ""}`}>
-              <span className="who">{msg.role === "sales" ? "业务员" : "客户"}</span>
+              <span className="who">
+                {msg.role === "sales" ? "业务员" : "客户"}
+                {msg.role === "customer" && <SpeakerBadge speaker={msg.speaker} />}
+              </span>
               <div className="bubble-row">
                 <div className="bubble">{msg.content}</div>
                 {voiceEnabled && msg.role === "customer" && (
                   <PlayButton
                     status={playback.key === messageCacheKey(msg, index) ? playback.status : "idle"}
+                    speaker={msg.speaker}
                     onClick={() => speakMessage(msg, index)}
                   />
                 )}
@@ -300,7 +342,10 @@ export default function Chat({ session, onSession, onReport, onError, onReset, v
           {isSending && !streamingActive && <CustomerReplyWaitingPanel />}
           {streamingActive && streamingText && (
             <div className="msg">
-              <span className="who">客户</span>
+              <span className="who">
+                客户
+                <SpeakerBadge speaker={streamingSpeaker} />
+              </span>
               <div className="bubble-row">
                 <div className="bubble streaming-bubble">{streamingText}<span className="streaming-cursor" /></div>
               </div>

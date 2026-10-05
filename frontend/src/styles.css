@@ -1948,6 +1948,30 @@ fieldset:disabled button:hover {
   justify-self: end;
 }
 .who { color: var(--faint); font-family: var(--mono); font-size: 10.5px; }
+.speaker-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  vertical-align: 1px;
+}
+.speaker-badge.speaker-buyer {
+  background: #e3eaf2;
+  color: #4a6280;
+}
+.speaker-badge.speaker-tech {
+  background: #d8f1ec;
+  color: #1a7568;
+}
+.speaker-badge.speaker-boss {
+  background: #f0ded8;
+  color: #8b3a2f;
+}
 .bubble {
   padding: 13px 15px;
   border-radius: 18px;
@@ -7094,6 +7118,16 @@ fieldset:disabled button:hover {
   border-color: rgba(217, 160, 51, 0.65);
   background: #fdf3e0;
   color: #b26a00;
+}
+
+.mic-button.is-unsupported {
+  border-color: rgba(180, 180, 180, 0.5);
+  background: #f0f0f0;
+  color: #999;
+  cursor: not-allowed;
+}
+.mic-button.is-unsupported svg line {
+  stroke: currentColor;
 }
 
 @keyframes micPulse {
