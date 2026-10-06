@@ -14,22 +14,19 @@ import {
 import { buildTrainingPayload } from "../utils/training";
 import { goalIcon } from "../components/Layout";
 
-export default function StartTraining({ onStarted, onError, recordCount }) {
-  const [form, setForm] = useState(defaultForm);
+export default function StartTraining({ onStarted, onError, recordCount, user }) {
+  const ownerName = user?.name || user?.username || "";
+  const [form, setForm] = useState(() => ({ ...defaultForm, owner_name: ownerName }));
   const [stageExpanded, setStageExpanded] = useState(false);
   const [setupSaved, setSetupSaved] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [templateFilter, setTemplateFilter] = useState("全部");
   const [showExtraFields, setShowExtraFields] = useState(false);
   const stageTabsRef = useRef(null);
   const isOpportunity = form.training_type === OPPORTUNITY_MODE;
   const stageIndex = Math.max(0, opportunityStages.findIndex((item) => item.name === form.stage));
   const activeStage = opportunityStages[stageIndex];
   const activeGoals = stageTrainingGoals[activeStage.name] || trainingGoals;
-  const visibleTemplates = trainingTemplates.filter((item) => {
-    if (templateFilter === "全部") return true;
-    return item.training_type === templateFilter;
-  });
+  const visibleTemplates = trainingTemplates.filter((item) => item.training_type === form.training_type);
   const trainingStep = isSubmitting
     ? { step: "第 3 步 / 3 步", label: "创建训练" }
     : setupSaved
@@ -42,9 +39,10 @@ export default function StartTraining({ onStarted, onError, recordCount }) {
       onError("请先保存客户信息，再进入下一步训练配置。");
       return;
     }
+    const nextForm = { ...form, owner_name: ownerName || form.owner_name };
     try {
       setIsSubmitting(true);
-      await onStarted(buildTrainingPayload(form), form.training_type, form);
+      await onStarted(buildTrainingPayload(nextForm), form.training_type, nextForm);
     } catch (err) {
       setIsSubmitting(false);
       onError(err.message);
@@ -57,8 +55,9 @@ export default function StartTraining({ onStarted, onError, recordCount }) {
   }
 
   function saveSetup() {
-    if (!form.owner_name.trim() || !form.customer_name.trim() || !form.product_name.trim() || !form.customer_type.trim() || !form.product_need.trim()) {
-      onError("请先补齐业务员、客户名称、产品、客户类型和需求。");
+    const nextOwner = ownerName || form.owner_name;
+    if (!form.customer_name.trim() || !form.product_name.trim() || !form.customer_type.trim() || !form.product_need.trim()) {
+      onError("请先补齐客户名称、产品、客户类型和需求。");
       return;
     }
     if (isOpportunity && (!form.last_contact.trim() || !form.stakeholder.trim())) {
@@ -66,6 +65,7 @@ export default function StartTraining({ onStarted, onError, recordCount }) {
       return;
     }
     onError("");
+    setForm((prev) => ({ ...prev, owner_name: nextOwner }));
     setSetupSaved(true);
   }
 
@@ -112,18 +112,24 @@ export default function StartTraining({ onStarted, onError, recordCount }) {
           <div className={`panel-head ${setupSaved ? "panel-head-saved" : ""}`}>
             {!setupSaved ? (
               <div className={`mode-switch-block ${isOpportunity ? "opportunity" : ""}`}>
-                <div className={`mode-switch ${isOpportunity ? "opportunity" : ""}`}>
-                  {TRAINING_TYPES.map((mode) => (
-                    <button type="button" key={mode} className={`mode-option ${form.training_type === mode ? "active" : ""}`} onClick={() => updateSetup({ training_type: mode })}>
-                      {mode}
+                <div className="mode-cards" role="radiogroup" aria-label="训练模式">
+                  {[
+                    ["客户情景陪练", "对话练话术", "和 AI 客户多轮对话，结束后出复盘报告"],
+                    ["商机推进教练", "出推进方案", "不进对话，直接生成判断 / 策略 / 动作"],
+                  ].map(([mode, short, desc]) => (
+                    <button
+                      type="button"
+                      key={mode}
+                      role="radio"
+                      aria-checked={form.training_type === mode}
+                      className={`mode-card ${form.training_type === mode ? "active" : ""}`}
+                      onClick={() => updateSetup({ training_type: mode })}
+                    >
+                      <b>{short}</b>
+                      <span>{desc}</span>
                     </button>
                   ))}
                 </div>
-                <p className="mode-desc">
-                  {isOpportunity
-                    ? "不进对话：填写商机卡点后，直接生成一份推进方案（判断 / 策略 / 动作）。"
-                    : "和 AI 客户多轮对话练话术，结束后生成能力评分与复盘报告。"}
-                </p>
               </div>
             ) : (
               <span className="panel-head-label">训练配置</span>
@@ -138,24 +144,7 @@ export default function StartTraining({ onStarted, onError, recordCount }) {
             <div className="template-block">
               <div className="section-title">
                 <h4>常用训练模板</h4>
-                <span className="hint">点选后自动带出客户信息，可再改。</span>
-              </div>
-              <div className="template-filters" role="tablist" aria-label="按模式筛选模板">
-                {["全部", ...TRAINING_TYPES].map((name) => (
-                  <button
-                    key={name}
-                    type="button"
-                    role="tab"
-                    aria-selected={templateFilter === name}
-                    className={`template-filter ${templateFilter === name ? "active" : ""}`}
-                    onClick={() => {
-                      setTemplateFilter(name);
-                      if (name !== "全部") updateSetup({ training_type: name });
-                    }}
-                  >
-                    {name === "客户情景陪练" ? "情景陪练" : name === "商机推进教练" ? "商机推进" : name}
-                  </button>
-                ))}
+                <span className="hint">当前模式 · 点选后自动带出客户信息，可再改。</span>
               </div>
               <div className="template-list">
                 {visibleTemplates.map((template) => (
@@ -180,7 +169,6 @@ export default function StartTraining({ onStarted, onError, recordCount }) {
             <div className="basic-fields">
               <div className="section-title"><h4>客户信息</h4><span className="hint">必填 5 项，其余可折叠。</span></div>
               <div className="form customer-info-form">
-                <label>业务员<input value={form.owner_name} onChange={(e) => updateSetup({ owner_name: e.target.value })} /></label>
                 <label>客户名称<input value={form.customer_name} onChange={(e) => updateSetup({ customer_name: e.target.value })} /></label>
                 <label>产品<input value={form.product_name} onChange={(e) => updateSetup({ product_name: e.target.value })} /></label>
                 <label>客户类型<select value={form.customer_type} onChange={(e) => updateSetup({ customer_type: e.target.value })}>{["老客户，订单减少", "新客户，价格敏感", "技术型客户，关注工艺", "渠道客户，关注交期"].map((item) => <option key={item}>{item}</option>)}</select></label>
@@ -221,7 +209,7 @@ export default function StartTraining({ onStarted, onError, recordCount }) {
               <div className="info-overview-head">
                 <div>
                   <span className={`mode-badge ${isOpportunity ? "opportunity" : "scenario"}`}>{form.training_type}</span>
-                  <h4>{form.customer_name}<span>{form.owner_name}</span></h4>
+                  <h4>{form.customer_name}</h4>
                   <p>{form.customer_type} · {form.product_name} · {form.product_need}</p>
                 </div>
                 <div className="info-actions">
@@ -236,50 +224,54 @@ export default function StartTraining({ onStarted, onError, recordCount }) {
             </div>
 
             <div className="quick-start">
-              <div className="section-title"><h4>商机阶段</h4><span className="tag">必选</span></div>
-              <div className={`stage-compact ${stageExpanded ? "expanded" : ""}`}>
-                <div className="stage-summary-button">
-                  <div className="stage-summary-main">
-                    <span className="stage-summary-title"><span>商机阶段 · {stageIndex + 1} / {opportunityStages.length}</span><b>{activeStage.name}</b></span>
-                  </div>
-                  <div className="stage-note-line">
-                    <span className="hint">{activeStage.note}</span>
-                  </div>
-                  <button className="stage-toggle-label" type="button" onClick={() => setStageExpanded(!stageExpanded)}>{stageExpanded ? "收起动作" : "查看动作"}</button>
-                </div>
-                <div className="stage-track-row">
-                  <span className="mini-progress" style={{ "--progress": `${((stageIndex + 1) / opportunityStages.length) * 100}%` }}><span /></span>
-                </div>
-                <div className="stage-progress" ref={stageTabsRef} style={{ "--stage-index": stageIndex }}>
-                  {opportunityStages.map((stage, index) => (
-                    <button key={stage.name} type="button" className={`stage-tab ${form.stage === stage.name ? "active" : ""} ${index < stageIndex ? "done" : ""}`} onClick={() => selectStage(stage)}>
-                      <b>{stage.name}</b><small>{stage.flow.length} 个动作</small>
+              <div className="section-title stage-section-title">
+                <h4>商机阶段</h4>
+                <span className="hint">当前：<b>{activeStage.name}</b></span>
+                <span className="tag">必选</span>
+              </div>
+              <div className="stage-scroll">
+                <div className="stage-scroll-track" ref={stageTabsRef}>
+                  {opportunityStages.map((stage) => (
+                    <button
+                      key={stage.name}
+                      type="button"
+                      className={`stage-pill ${form.stage === stage.name ? "active" : ""}`}
+                      onClick={() => selectStage(stage)}
+                    >
+                      {stage.name}
                     </button>
                   ))}
                 </div>
-                <div className="stage-expanded-content">
-                  <div className="stage-detail">
-                    <div className="stage-summary"><h4>{activeStage.name}</h4><p className="hint">{activeStage.note}</p></div>
-                    <div className="flow-list">
-                      {activeStage.flow.map(([name, summary], index) => (
-                        <div className="flow-item" key={name} style={{ "--i": index }}><span className="flow-index">{index + 1}</span><span><b>{name}</b><small>{summary}</small></span></div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+                <span className="stage-scroll-fade" aria-hidden="true"><i>›</i></span>
               </div>
+              <p className="stage-note hint">{activeStage.note}</p>
+              <button type="button" className="text-button stage-toggle-label" onClick={() => setStageExpanded(!stageExpanded)} aria-expanded={stageExpanded}>
+                {stageExpanded ? "收起该阶段动作" : `查看动作（${activeStage.flow.length}）`}
+              </button>
+              {stageExpanded && (
+                <div className="flow-list compact-flow">
+                  {activeStage.flow.map(([name, summary], index) => (
+                    <div className="flow-item" key={name}><span className="flow-index">{index + 1}</span><span><b>{name}</b><small>{summary}</small></span></div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <label className="field full">一句话描述当前客户 / 商机问题<textarea rows={4} value={form.background} onChange={(e) => setForm({ ...form, background: e.target.value })} placeholder="客户是谁、卡在哪里、你希望推进到哪一步" /></label>
 
-            <div className="section-title"><h4>训练目标</h4><span className="hint">{activeStage.name}阶段推荐目标，选择一个最贴近当前卡点的训练方向。</span></div>
-            <div className="goal-grid">
-              {activeGoals.map((goal) => (
-                <button key={goal.id} type="button" className={`goal ${form.goal === goal.name ? "active" : ""}`} onClick={() => setForm({ ...form, goal: goal.name })}>
-                  <span className="goal-head"><span className="goal-mark" aria-hidden="true">{goalIcon(goal.id)}</span><b>{goal.name}</b></span>
-                  <span className="goal-desc">{goal.desc}</span>
-                </button>
-              ))}
+            <div className="stage-goals">
+              <div className="section-title">
+                <h4>训练目标</h4>
+                <span className="hint">{activeStage.name} · 选一个最贴近卡点的方向</span>
+              </div>
+              <div className="goal-grid secondary-goals">
+                {activeGoals.map((goal) => (
+                  <button key={goal.id} type="button" className={`goal ${form.goal === goal.name ? "active" : ""}`} onClick={() => setForm({ ...form, goal: goal.name })}>
+                    <span className="goal-head"><span className="goal-mark" aria-hidden="true">{goalIcon(goal.id)}</span><b>{goal.name}</b></span>
+                    <span className="goal-desc">{goal.desc}</span>
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="actions train-submit-actions">
               {isSubmitting ? <span className="submit-waiting" role="status" aria-live="polite"><i /><span>{isOpportunity ? "正在生成推进方案，请稍等。" : "正在创建训练对话，请稍等。"}</span></span> : <span />}

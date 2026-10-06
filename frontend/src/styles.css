@@ -6489,9 +6489,10 @@ fieldset:disabled button:hover {
   .setup-actions { align-items: stretch; flex-direction: column; }
   .setup-actions .primary { width: 100%; }
   .info-overview { gap: 14px; padding: 16px; }
-  .info-overview-head { align-items: stretch; flex-direction: column; }
-  .info-actions { justify-content: space-between; }
-  .info-overview-head .secondary { width: 100%; }
+  .info-overview-head { align-items: stretch; flex-direction: column; gap: 12px; }
+  .info-actions { justify-content: flex-start; width: 100%; }
+  .info-actions .secondary { width: auto; flex: 1; min-height: 44px; }
+  .saved-badge { flex: 0 0 auto; white-space: nowrap; }
   .stage-summary-button { grid-template-columns: 1fr; gap: 12px; }
   .stage-summary-main { grid-template-columns: 1fr; }
   .stage-toggle-label { width: fit-content; }
@@ -6527,7 +6528,7 @@ fieldset:disabled button:hover {
   .review-readiness-actions { justify-content: stretch; }
   .review-readiness-actions button { flex: 1; }
   .review-readiness-pending { justify-self: stretch; text-align: center; white-space: normal; }
-  .goal-grid {
+  .goal-grid:not(.secondary-goals) {
     display: flex;
     overflow-x: auto;
     scrollbar-width: none;
@@ -8031,19 +8032,205 @@ fieldset:disabled button:hover {
   }
 }
 
-/* ===== 发起训练页：模式说明 + 模板列表 ===== */
-.mode-switch-block {
+/* ===== 发起训练页：模式卡片 + 阶段横滑 ===== */
+.mode-cards {
   display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: 100%;
+}
+
+.mode-card {
+  display: grid;
+  gap: 4px;
+  min-height: 72px;
+  padding: 12px 14px;
+  border: 1px solid #d7dee9;
+  border-radius: 14px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mode-card b {
+  color: #1f2937;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.mode-card span {
+  color: #6b7586;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.mode-card.active {
+  border-color: #1a73e8;
+  background: #f3f7ff;
+  box-shadow: 0 2px 10px rgba(26, 115, 232, 0.12);
+}
+
+.mode-card.active b {
+  color: #0b57d0;
+}
+
+.stage-section-title {
+  display: flex;
+  align-items: baseline;
   gap: 8px;
-  flex: 1;
+  flex-wrap: wrap;
+}
+
+.stage-section-title h4 {
+  margin: 0;
+}
+
+.stage-section-title .hint {
+  flex: 1 1 auto;
   min-width: 0;
 }
 
-.mode-desc {
-  margin: 0;
-  color: #5f6b7a;
+.stage-section-title .tag {
+  margin-left: 0;
+  flex: 0 0 auto;
+}
+
+.stage-scroll {
+  position: relative;
+  margin: 0 -2px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.panel-inner > *,
+.training-config > *,
+.training-config,
+.quick-start,
+.info-overview,
+.info-overview-head,
+.stage-goals,
+.basic-fields,
+.setup-block,
+.field,
+.field.full {
+  min-width: 0;
+}
+
+.stage-scroll-track {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 28px 6px 2px;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+
+.stage-scroll-track::-webkit-scrollbar {
+  display: none;
+}
+
+.stage-pill {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid #d7dee9;
+  border-radius: 999px;
+  background: #fff;
+  color: #4a5568;
+  font-size: 13px;
+  font-weight: 720;
+  white-space: nowrap;
+  scroll-snap-align: start;
+  cursor: pointer;
+}
+
+.stage-pill.active {
+  border-color: #1a73e8;
+  background: #e8f0fe;
+  color: #0b57d0;
+}
+
+.stage-scroll-fade {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 6px;
+  width: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 4px;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.55) 40%, rgba(255, 255, 255, 0.96) 72%);
+}
+
+.stage-scroll-fade i {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #e8eef8;
+  color: #5b6b82;
+  font-style: normal;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 1px 4px rgba(30, 41, 59, 0.14);
+}
+
+.stage-note {
+  margin: 2px 0 0;
   font-size: 12.5px;
   line-height: 1.55;
+}
+
+.stage-toggle-label {
+  justify-self: start;
+  min-height: 34px;
+  padding: 2px 0;
+  color: #0b57d0;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.compact-flow {
+  margin-top: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #f7f9fc;
+}
+
+.stage-goals {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(198, 216, 239, 0.9);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #f7faff, #fff);
+}
+
+.secondary-goals {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 8px;
+  overflow: visible;
+  min-width: 0;
+}
+
+.secondary-goals .goal {
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+  flex: none !important;
+  width: 100%;
+}
+
+.secondary-goals .goal-desc {
+  white-space: normal;
+  display: block;
+  overflow: visible;
 }
 
 .template-filters {
@@ -8226,17 +8413,41 @@ fieldset:disabled button:hover {
     gap: 8px;
   }
 
-  .template-chip {
-    padding: 10px;
-    min-height: 88px;
+  .mode-cards {
+    gap: 8px;
   }
 
-  .template-chip-top b {
-    font-size: 13px;
+  .mode-card {
+    min-height: 80px;
+    padding: 12px;
   }
 
-  .template-chip-sub {
-    font-size: 11.5px;
+  .mode-card b {
+    font-size: 13.5px;
+  }
+
+  .mode-card span {
+    font-size: 11px;
+  }
+
+  .stage-pill {
+    min-height: 40px;
+    font-size: 12.5px;
+    padding: 8px 12px;
+  }
+
+  .secondary-goals {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 8px;
+  }
+
+  .secondary-goals .goal {
+    min-height: 0;
+  }
+
+  .stage-goals {
+    padding: 12px;
+    gap: 8px;
   }
 
   .form label textarea,
@@ -8308,17 +8519,25 @@ fieldset:disabled button:hover {
     font-size: 12px;
   }
 
-  .goal {
-    flex: 0 0 min(72vw, 220px);
-  }
-
-  .goal-grid {
+  .goal-grid:not(.secondary-goals) {
     display: flex;
     overflow-x: auto;
     scrollbar-width: none;
   }
 
-  .goal-grid::-webkit-scrollbar {
+  .goal-grid:not(.secondary-goals)::-webkit-scrollbar {
     display: none;
+  }
+
+  .goal-grid:not(.secondary-goals) .goal {
+    flex: 0 0 min(72vw, 220px);
+  }
+
+  .secondary-goals {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .mode-cards {
+    grid-template-columns: 1fr 1fr;
   }
 }
