@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 
 export function isMockRuntime(runtimeStatus) {
   return runtimeStatus?.llm_mode === "mock" || runtimeStatus?.llm_configured === false;
@@ -41,8 +41,16 @@ export function Card({ title, children, className = "" }) {
   return <section className={`card ${className}`.trim()}><h3>{title}</h3>{children}</section>;
 }
 
-export function Empty({ title, text }) {
-  return <section className="empty"><h2>{title}</h2><p>{text}</p></section>;
+export function Empty({ title, text, actionLabel, onAction }) {
+  return (
+    <section className="empty">
+      <h2>{title}</h2>
+      <p>{text}</p>
+      {actionLabel && onAction && (
+        <button type="button" className="primary empty-action" onClick={onAction}>{actionLabel}</button>
+      )}
+    </section>
+  );
 }
 
 export function input(label, key, form, setForm) {
@@ -81,9 +89,18 @@ export function navIcon(id) {
     history: <><path d="M5 5h14v14H5z"></path><path d="M8 9h8"></path><path d="M8 13h5"></path></>,
     dashboard: <><path d="M4 13h6V5H4z"></path><path d="M14 19h6V5h-6z"></path><path d="M4 19h6v-3H4z"></path></>,
     knowledge: <><path d="M6 4h9l3 3v13H6z"></path><path d="M14 4v4h4"></path><path d="M9 12h6"></path><path d="M9 16h6"></path></>,
+    more: <><circle cx="6" cy="12" r="1.2"></circle><circle cx="12" cy="12" r="1.2"></circle><circle cx="18" cy="12" r="1.2"></circle></>,
+    profile: <><circle cx="12" cy="8" r="3.2"></circle><path d="M5.5 19a6.5 6.5 0 0 1 13 0"></path></>,
   };
   return <svg viewBox="0 0 24 24" aria-hidden="true">{icons[id]}</svg>;
 }
+
+const MOBILE_TABS = [
+  ["start", "训练"],
+  ["chat", "对话"],
+  ["report", "报告"],
+  ["history", "历史"],
+];
 
 export default function Layout({
   user,
@@ -99,8 +116,22 @@ export default function Layout({
   logout,
   children,
 }) {
+  const [moreOpen, setMoreOpen] = useState(false);
+  const secondaryViews = [
+    ["dashboard", "能力看板", "个人趋势"],
+    ["knowledge", user.role === "admin" ? "文档管理" : "文档查看", "SOP / 产品资料"],
+    ["profile", "个人资料", "账号信息与权限"],
+    ...(user.role === "admin" ? [["modelConfig", "模型配置", "LLM / API Key"]] : []),
+  ];
+  const moreActive = secondaryViews.some(([id]) => id === view);
+
+  function goView(id) {
+    setMoreOpen(false);
+    setView(id);
+  }
+
   return (
-    <div className={`app ${railCollapsed ? "rail-collapsed" : ""}`}>
+    <div className={`app ${railCollapsed ? "rail-collapsed" : ""} ${view === "chat" ? "view-chat" : ""}`}>
       <aside className="rail">
         <div className="brand">
           <span className="mark" />
@@ -181,6 +212,65 @@ export default function Layout({
           {children}
         </div>
       </main>
+
+      <nav className="bottom-tabs" aria-label="底部导航">
+        {MOBILE_TABS.map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            className={`bottom-tab ${view === id ? "active" : ""}`}
+            onClick={() => goView(id)}
+          >
+            <span className="bottom-tab-icon">{navIcon(id)}</span>
+            <span>{label}</span>
+          </button>
+        ))}
+        <button
+          type="button"
+          className={`bottom-tab ${moreActive || moreOpen ? "active" : ""}`}
+          onClick={() => setMoreOpen((value) => !value)}
+          aria-expanded={moreOpen}
+        >
+          <span className="bottom-tab-icon">{navIcon("more")}</span>
+          <span>更多</span>
+        </button>
+      </nav>
+
+      {moreOpen && (
+        <>
+          <button
+            type="button"
+            className="more-sheet-backdrop"
+            aria-label="关闭更多菜单"
+            onClick={() => setMoreOpen(false)}
+          />
+          <div className="more-sheet" role="dialog" aria-label="更多功能">
+            <div className="more-sheet-handle" aria-hidden="true" />
+            <p className="more-sheet-title">更多</p>
+            {secondaryViews.map(([id, title, sub]) => (
+              <button
+                key={id}
+                type="button"
+                className={`more-row ${view === id ? "active" : ""}`}
+                onClick={() => goView(id)}
+              >
+                <span className="more-row-icon">{navIcon(id)}</span>
+                <span className="more-row-copy">
+                  <b>{title}</b>
+                  <small>{sub}</small>
+                </span>
+              </button>
+            ))}
+            <button type="button" className="more-row danger" onClick={() => { setMoreOpen(false); logout(); }}>
+              <span className="more-row-icon">{navIcon("profile")}</span>
+              <span className="more-row-copy">
+                <b>退出登录</b>
+                <small>返回登录入口</small>
+              </span>
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

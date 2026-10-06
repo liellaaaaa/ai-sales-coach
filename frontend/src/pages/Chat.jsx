@@ -146,7 +146,7 @@ function BargeInBar({ onInterrupt }) {
   );
 }
 
-export default function Chat({ session, onSession, onReport, onError, onReset, voiceEnabled }) {
+export default function Chat({ session, onSession, onReport, onError, onReset, onStartTraining, voiceEnabled }) {
   const [text, setText] = useState("");
   const [showExample, setShowExample] = useState(false);
   const [suggestion, setSuggestion] = useState(null);
@@ -280,7 +280,7 @@ export default function Chat({ session, onSession, onReport, onError, onReset, v
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [showExample]);
 
-  if (!session) return <Empty title="还没有训练" text="先从开始训练创建一次会话。" />;
+  if (!session) return <Empty title="还没有训练" text="先从开始训练创建一次会话。" actionLabel="去开始训练" onAction={onStartTraining} />;
 
   async function send(forcedContent) {
     const isForced = forcedContent != null;
@@ -437,8 +437,8 @@ export default function Chat({ session, onSession, onReport, onError, onReset, v
   }
 
   return (
-    <section className="page knowledge-page">
-      <div className="hero">
+    <section className="page chat-page">
+      <div className="hero chat-hero">
         <div className="intro"><span className="eyebrow">客户情景陪练</span><h3>{session.goal}：{session.customer_name}</h3><p className="hint">{session.stage} / {session.training_type} / {session.customer_type}</p></div>
         <div className="metric-card"><span className="small">业务员轮次</span><strong>{salesTurns}</strong><p className="small">{salesTurns >= 3 ? "已满足验收轮次" : "建议至少 3 轮"}</p></div>
       </div>

@@ -148,7 +148,7 @@ function App() {
     >
       {error && <div className="toast">{error}</div>}
       {view === "start" && <StartTraining onError={setError} onStarted={startSession} recordCount={sessions.length} />}
-      {view === "chat" && <Chat session={session} voiceEnabled={runtimeStatus?.voice_configured === true} onError={setError} onSession={setSession} onReset={resetCurrentChat} onReport={(nextReport) => { setReport(withSessionMeta(nextReport, session)); setView("report"); loadAll(); }} />}
+      {view === "chat" && <Chat session={session} voiceEnabled={runtimeStatus?.voice_configured === true} onError={setError} onSession={setSession} onReset={resetCurrentChat} onStartTraining={() => setView("start")} onReport={(nextReport) => { setReport(withSessionMeta(nextReport, session)); setView("report"); loadAll(); }} />}
       {view === "report" && <Report report={report} />}
       {view === "history" && (
         <History

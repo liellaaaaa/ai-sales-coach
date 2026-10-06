@@ -47,7 +47,7 @@ export default function History({ sessions, onOpen, onRetry, onClear }) {
                   </button>
                 ))}
               </div>
-              <button className="secondary" onClick={onClear}>清空我的训练记录</button>
+              {!!sessions.length && <button className="secondary clear-records" onClick={onClear}>清空记录</button>}
             </div>
           </div>
           {!sessions.length && <Empty title="还没有训练记录" text="先完成一次训练，就能在这里看到留档和再次训练入口。" />}

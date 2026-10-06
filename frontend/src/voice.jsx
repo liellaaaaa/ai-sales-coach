@@ -258,7 +258,7 @@ export function MicButton({
           <path d="M12 17v3"></path>
           <line x1="4" y1="4" x2="20" y2="20" stroke="currentColor" strokeWidth="2" />
         </svg>
-        <span>{label}</span>
+        <span className="mic-label">{label}</span>
       </button>
     );
   }
@@ -274,13 +274,14 @@ export function MicButton({
       onPointerCancel={handlePointerCancel}
       onContextMenu={(event) => event.preventDefault()}
       title={title}
+      aria-label={title}
     >
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M12 4a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V7a3 3 0 0 1 3-3z"></path>
         <path d="M6 11a6 6 0 0 0 12 0"></path>
         <path d="M12 17v3"></path>
       </svg>
-      <span>{label}</span>
+      <span className="mic-label">{label}</span>
     </button>
   );
 }
