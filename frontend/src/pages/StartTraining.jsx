@@ -19,11 +19,17 @@ export default function StartTraining({ onStarted, onError, recordCount }) {
   const [stageExpanded, setStageExpanded] = useState(false);
   const [setupSaved, setSetupSaved] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [templateFilter, setTemplateFilter] = useState("全部");
+  const [showExtraFields, setShowExtraFields] = useState(false);
   const stageTabsRef = useRef(null);
   const isOpportunity = form.training_type === OPPORTUNITY_MODE;
   const stageIndex = Math.max(0, opportunityStages.findIndex((item) => item.name === form.stage));
   const activeStage = opportunityStages[stageIndex];
   const activeGoals = stageTrainingGoals[activeStage.name] || trainingGoals;
+  const visibleTemplates = trainingTemplates.filter((item) => {
+    if (templateFilter === "全部") return true;
+    return item.training_type === templateFilter;
+  });
   const trainingStep = isSubmitting
     ? { step: "第 3 步 / 3 步", label: "创建训练" }
     : setupSaved
@@ -88,14 +94,14 @@ export default function StartTraining({ onStarted, onError, recordCount }) {
   }
 
   return (
-    <section className="page knowledge-page">
-      <div className="hero">
+    <section className="page knowledge-page start-training-page">
+      <div className="hero start-hero">
         <div className="intro">
           <span className="eyebrow">训练闭环</span>
           <h3>先用一句话发起训练</h3>
-          <p className="hint">先选择训练模式并保存客户基础信息，再进入商机阶段、问题描述和训练目标。</p>
+          <p className="hint">选模式 → 点模板或填客户信息 → 保存后选目标开练。</p>
         </div>
-        <div className="metric-card">
+        <div className="metric-card compact-metric">
           <span className="small">本地训练记录</span>
           <strong>{recordCount}</strong>
           <p className="small">完成训练后自动保存</p>
@@ -105,12 +111,19 @@ export default function StartTraining({ onStarted, onError, recordCount }) {
         <div className="panel-inner">
           <div className={`panel-head ${setupSaved ? "panel-head-saved" : ""}`}>
             {!setupSaved ? (
-              <div className={`mode-switch ${isOpportunity ? "opportunity" : ""}`}>
-                {TRAINING_TYPES.map((mode) => (
-                  <button type="button" key={mode} className={`mode-option ${form.training_type === mode ? "active" : ""}`} onClick={() => updateSetup({ training_type: mode })}>
-                    {mode}
-                  </button>
-                ))}
+              <div className={`mode-switch-block ${isOpportunity ? "opportunity" : ""}`}>
+                <div className={`mode-switch ${isOpportunity ? "opportunity" : ""}`}>
+                  {TRAINING_TYPES.map((mode) => (
+                    <button type="button" key={mode} className={`mode-option ${form.training_type === mode ? "active" : ""}`} onClick={() => updateSetup({ training_type: mode })}>
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+                <p className="mode-desc">
+                  {isOpportunity
+                    ? "不进对话：填写商机卡点后，直接生成一份推进方案（判断 / 策略 / 动作）。"
+                    : "和 AI 客户多轮对话练话术，结束后生成能力评分与复盘报告。"}
+                </p>
               </div>
             ) : (
               <span className="panel-head-label">训练配置</span>
@@ -123,38 +136,66 @@ export default function StartTraining({ onStarted, onError, recordCount }) {
 
           {!setupSaved && <div className="setup-block">
             <div className="template-block">
-              <div className="section-title"><h4>常用训练模板</h4><span className="hint">点选模板后可继续微调客户信息和训练目标。</span></div>
-              <div className="template-grid">
-                {trainingTemplates.map((template, index) => (
+              <div className="section-title">
+                <h4>常用训练模板</h4>
+                <span className="hint">点选后自动带出客户信息，可再改。</span>
+              </div>
+              <div className="template-filters" role="tablist" aria-label="按模式筛选模板">
+                {["全部", ...TRAINING_TYPES].map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    role="tab"
+                    aria-selected={templateFilter === name}
+                    className={`template-filter ${templateFilter === name ? "active" : ""}`}
+                    onClick={() => {
+                      setTemplateFilter(name);
+                      if (name !== "全部") updateSetup({ training_type: name });
+                    }}
+                  >
+                    {name === "客户情景陪练" ? "情景陪练" : name === "商机推进教练" ? "商机推进" : name}
+                  </button>
+                ))}
+              </div>
+              <div className="template-list">
+                {visibleTemplates.map((template) => (
                   <button
                     key={template.id}
                     type="button"
-                    className={`template-card ${form.template_id === template.id ? "active" : ""}`}
+                    className={`template-chip ${form.template_id === template.id ? "active" : ""}`}
                     onClick={() => applyTemplate(template)}
                   >
-                    <span className="template-card-head"><em>模板 {index + 1}</em><span className="template-head-meta"><strong>{template.customer_concern}</strong><i className="template-select-mark" aria-hidden="true" /></span></span>
-                    <b>{template.title}</b>
-                    <span>{template.subtitle}</span>
-                    <small className="template-route">{template.customer_personality} · {template.stage}</small>
+                    <span className="template-chip-top">
+                      <b>{template.title}</b>
+                      <em>{template.customer_concern}</em>
+                    </span>
+                    <span className="template-chip-sub">{template.subtitle}</span>
+                    <small>{template.stage} · {template.customer_personality}</small>
                   </button>
                 ))}
+                {!visibleTemplates.length && <p className="hint">该模式下暂无模板，可直接填写客户信息。</p>}
               </div>
             </div>
 
             <div className="basic-fields">
-              <div className="section-title"><h4>客户信息</h4><span className="hint">默认带出，可按本次训练快速调整。</span></div>
+              <div className="section-title"><h4>客户信息</h4><span className="hint">必填 5 项，其余可折叠。</span></div>
               <div className="form customer-info-form">
                 <label>业务员<input value={form.owner_name} onChange={(e) => updateSetup({ owner_name: e.target.value })} /></label>
                 <label>客户名称<input value={form.customer_name} onChange={(e) => updateSetup({ customer_name: e.target.value })} /></label>
                 <label>产品<input value={form.product_name} onChange={(e) => updateSetup({ product_name: e.target.value })} /></label>
                 <label>客户类型<select value={form.customer_type} onChange={(e) => updateSetup({ customer_type: e.target.value })}>{["老客户，订单减少", "新客户，价格敏感", "技术型客户，关注工艺", "渠道客户，关注交期"].map((item) => <option key={item}>{item}</option>)}</select></label>
-                <label className="demand-field">需求<input value={form.product_need} onChange={(e) => updateSetup({ product_need: e.target.value })} /></label>
+                <label className="demand-field">需求<textarea rows={2} value={form.product_need} onChange={(e) => updateSetup({ product_need: e.target.value })} /></label>
               </div>
-              <div className="profile-tuning">
-                <label>客户难度<select value={form.customer_difficulty} onChange={(e) => updateSetup({ customer_difficulty: e.target.value })}>{customerDifficultyOptions.map((item) => <option key={item}>{item}</option>)}</select></label>
-                <label>客户性格<select value={form.customer_personality} onChange={(e) => updateSetup({ customer_personality: e.target.value })}>{customerPersonalityOptions.map((item) => <option key={item}>{item}</option>)}</select></label>
-                <label>核心关注<select value={form.customer_concern} onChange={(e) => updateSetup({ customer_concern: e.target.value })}>{customerConcernOptions.map((item) => <option key={item}>{item}</option>)}</select></label>
-              </div>
+              <button type="button" className="text-button extra-toggle" onClick={() => setShowExtraFields((v) => !v)} aria-expanded={showExtraFields}>
+                {showExtraFields ? "收起客户设定" : "展开客户设定（难度 / 性格 / 关注点）"}
+              </button>
+              {showExtraFields && (
+                <div className="profile-tuning extra-fields">
+                  <label>客户难度<select value={form.customer_difficulty} onChange={(e) => updateSetup({ customer_difficulty: e.target.value })}>{customerDifficultyOptions.map((item) => <option key={item}>{item}</option>)}</select></label>
+                  <label>客户性格<select value={form.customer_personality} onChange={(e) => updateSetup({ customer_personality: e.target.value })}>{customerPersonalityOptions.map((item) => <option key={item}>{item}</option>)}</select></label>
+                  <label>核心关注<select value={form.customer_concern} onChange={(e) => updateSetup({ customer_concern: e.target.value })}>{customerConcernOptions.map((item) => <option key={item}>{item}</option>)}</select></label>
+                </div>
+              )}
             </div>
 
             <div className={`coach-panel ${isOpportunity ? "visible" : ""}`}>
@@ -229,7 +270,7 @@ export default function StartTraining({ onStarted, onError, recordCount }) {
               </div>
             </div>
 
-            <label className="field full">一句话描述当前客户 / 商机问题<textarea value={form.background} onChange={(e) => setForm({ ...form, background: e.target.value })} /></label>
+            <label className="field full">一句话描述当前客户 / 商机问题<textarea rows={4} value={form.background} onChange={(e) => setForm({ ...form, background: e.target.value })} placeholder="客户是谁、卡在哪里、你希望推进到哪一步" /></label>
 
             <div className="section-title"><h4>训练目标</h4><span className="hint">{activeStage.name}阶段推荐目标，选择一个最贴近当前卡点的训练方向。</span></div>
             <div className="goal-grid">

@@ -1,18 +1,29 @@
 import React, { useState } from "react";
 
+const LABEL_SHORT = {
+  工艺探询: "工艺探询",
+  产品选型: "产品选型",
+  技术边界: "技术边界",
+  异议处理: "异议处理",
+  故障归因: "故障归因",
+  价值合规: "价值合规",
+  推进动作: "推进动作",
+};
+
 export default function AbilityRadar({ scores }) {
   const items = (scores || []).slice(0, 7);
   const [activeIndex, setActiveIndex] = useState(null);
   if (!items.length) return <div className="radar-empty">暂无评分维度</div>;
   const center = 118;
-  const maxRadius = 84;
+  const maxRadius = 78;
   const axis = items.map((item, index) => {
     const angle = (Math.PI * 2 * index) / items.length - Math.PI / 2;
     const valueRadius = maxRadius * Math.max(0, Math.min(5, item.value)) / 5;
     return {
       ...item,
-      labelX: center + Math.cos(angle) * (maxRadius + 10),
-      labelY: center + Math.sin(angle) * (maxRadius + 10),
+      shortName: LABEL_SHORT[item.name] || item.name,
+      labelX: center + Math.cos(angle) * (maxRadius + 18),
+      labelY: center + Math.sin(angle) * (maxRadius + 18),
       endX: center + Math.cos(angle) * maxRadius,
       endY: center + Math.sin(angle) * maxRadius,
       pointX: center + Math.cos(angle) * valueRadius,
@@ -70,7 +81,7 @@ export default function AbilityRadar({ scores }) {
               transform: "translate(-50%, -50%)",
             }}
           >
-            {item.name}
+            {item.shortName}
           </span>
         ))}
         {activeItem && (
