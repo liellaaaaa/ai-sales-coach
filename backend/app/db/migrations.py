@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from sqlalchemy import inspect, text
 
 from app.db.session import engine
@@ -69,8 +71,56 @@ def ensure_runtime_schema():
             if name not in message_columns:
                 statements.append(f"ALTER TABLE training_messages ADD COLUMN {name} {column_type}")
 
-    if not statements:
+    # 阶段0：审计时间字段
+    table_column_maps = {
+        "users": {"created_at": "TIMESTAMP", "updated_at": "TIMESTAMP"},
+        "knowledge_documents": {"updated_at": "TIMESTAMP"},
+        "knowledge_items": {"updated_at": "TIMESTAMP"},
+        "training_sessions": {"updated_at": "TIMESTAMP"},
+    }
+    # 阶段1：软删时间戳
+    table_column_maps.setdefault("knowledge_documents", {})["deleted_at"] = "TIMESTAMP"
+    table_column_maps.setdefault("knowledge_items", {})["deleted_at"] = "TIMESTAMP"
+    table_column_maps.setdefault("training_sessions", {})["deleted_at"] = "TIMESTAMP"
+    for table_name, columns in table_column_maps.items():
+        if table_name not in tables:
+            continue
+        existing = {column["name"] for column in inspector.get_columns(table_name)}
+        for name, column_type in columns.items():
+            if name not in existing:
+                statements.append(f"ALTER TABLE {table_name} ADD COLUMN {name} {column_type}")
+
+    # 阶段1：热点索引（SQLite / PostgreSQL 均支持 IF NOT EXISTS）
+    index_statements = [
+        "CREATE INDEX IF NOT EXISTS ix_training_sessions_owner_id ON training_sessions (owner_id)",
+        "CREATE INDEX IF NOT EXISTS ix_training_sessions_status ON training_sessions (status)",
+        "CREATE INDEX IF NOT EXISTS ix_training_sessions_created_at ON training_sessions (created_at)",
+        "CREATE INDEX IF NOT EXISTS ix_training_messages_session_id ON training_messages (session_id)",
+        "CREATE INDEX IF NOT EXISTS ix_knowledge_items_document_id ON knowledge_items (document_id)",
+        "CREATE INDEX IF NOT EXISTS ix_knowledge_items_document_version_id ON knowledge_items (document_version_id)",
+        "CREATE INDEX IF NOT EXISTS ix_knowledge_items_status ON knowledge_items (status)",
+        "CREATE INDEX IF NOT EXISTS ix_knowledge_items_stage_scenario ON knowledge_items (stage, scenario)",
+        "CREATE INDEX IF NOT EXISTS ix_knowledge_documents_status ON knowledge_documents (status)",
+        "CREATE INDEX IF NOT EXISTS ix_knowledge_documents_source_type ON knowledge_documents (source_type)",
+        "CREATE INDEX IF NOT EXISTS ix_knowledge_documents_title ON knowledge_documents (title)",
+        "CREATE INDEX IF NOT EXISTS ix_knowledge_document_versions_document_id ON knowledge_document_versions (document_id)",
+    ]
+
+    if not statements and not index_statements:
         return
     with engine.begin() as connection:
         for statement in statements:
             connection.execute(text(statement))
+        for statement in index_statements:
+            connection.execute(text(statement))
+        # 历史行回填当前时间，避免空值（参数化 UTC 时间戳，兼容 SQLite / PostgreSQL）
+        for table_name, columns in table_column_maps.items():
+            if table_name not in tables:
+                continue
+            for name in columns:
+                if name == "deleted_at":
+                    continue
+                connection.execute(
+                    text(f"UPDATE {table_name} SET {name} = :ts WHERE {name} IS NULL"),
+                    {"ts": datetime.now(timezone.utc).replace(tzinfo=None)},
+                )

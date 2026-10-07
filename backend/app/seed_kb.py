@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models import KnowledgeDocument, KnowledgeDocumentVersion, KnowledgeItem
 from app.services.document_parser import parse_document
+from app.services.report_details import sync_document_tags
 
 
 KB_DIR = Path(__file__).resolve().parent.parent.parent / "kb"
@@ -151,6 +152,7 @@ def seed_kb_from_folder(db: Session) -> int:
         )
         db.add(document)
         db.flush()
+        sync_document_tags(db, document, meta.get("tags", ""))
 
         version = KnowledgeDocumentVersion(
             document_id=document.id,

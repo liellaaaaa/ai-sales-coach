@@ -38,20 +38,38 @@ def assert_login_rejected(client: TestClient, username: str):
     assert response.status_code == 401, response.text
 
 
-def create_legacy_role_users():
+def assert_legacy_roles_rejected_by_db():
+    """角色 CHECK 约束：非法角色（supervisor/trainer）应在入库层被拒绝。"""
     db = SessionLocal()
     try:
         for username, role in [("supervisor", "supervisor"), ("trainer", "trainer")]:
-            if not db.query(User).filter(User.username == username).first():
-                db.add(
-                    User(
-                        username=username,
-                        name=username,
-                        role=role,
-                        password_hash=hash_password("123456"),
-                    )
+            if db.query(User).filter(User.username == username).first():
+                continue
+            db.add(
+                User(
+                    username=username,
+                    name=username,
+                    role=role,
+                    password_hash=hash_password("123456"),
                 )
-        db.commit()
+            )
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
+            else:
+                raise AssertionError(f"role={role!r} should be rejected by CHECK constraint")
+        # 合法角色可正常入库
+        if not db.query(User).filter(User.username == "qa_sales").first():
+            db.add(
+                User(
+                    username="qa_sales",
+                    name="qa_sales",
+                    role="sales",
+                    password_hash=hash_password("123456"),
+                )
+            )
+            db.commit()
     finally:
         db.close()
 
@@ -156,6 +174,19 @@ def assert_document_parsing_flow(client: TestClient, admin_headers: dict):
     assert product["current_version"]["chunk_count"] >= 3
     product_types = chunk_types(client, admin_headers, product["id"])
     assert {"产品参数", "工艺条件", "注意事项"} & product_types
+
+    # 阶段1：document_tags 关联表与逗号 tags 同步
+    from app.models import DocumentTag
+
+    db = SessionLocal()
+    try:
+        tag_names = {
+            row.tag
+            for row in db.query(DocumentTag).filter(DocumentTag.document_id == product["id"]).all()
+        }
+        assert "固色剂" in tag_names and "技术交涉" in tag_names, tag_names
+    finally:
+        db.close()
 
     product = upload_document_version(
         client,
@@ -266,6 +297,21 @@ def finish_session(client: TestClient, headers: dict, session_id: int) -> dict:
     assert report["summary"]
     assert len(report["scores"]) >= 7
     assert report["citations"]
+
+    # 阶段1：报告明细子表双写
+    from app.models import ReportCitation, ReportScore, ReportTodo, TrainingReport
+
+    db = SessionLocal()
+    try:
+        row = db.query(TrainingReport).filter(TrainingReport.session_id == session_id).one()
+        score_count = db.query(ReportScore).filter(ReportScore.report_id == row.id).count()
+        todo_count = db.query(ReportTodo).filter(ReportTodo.report_id == row.id).count()
+        cite_count = db.query(ReportCitation).filter(ReportCitation.report_id == row.id).count()
+        assert score_count >= 7, score_count
+        assert todo_count >= 1, todo_count
+        assert cite_count >= 1, cite_count
+    finally:
+        db.close()
     return report
 
 
@@ -375,7 +421,7 @@ def run():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     seed_main()
-    create_legacy_role_users()
+    assert_legacy_roles_rejected_by_db()
     assert_openai_compatible_messages_are_sendable()
 
     client = TestClient(app)
@@ -392,8 +438,10 @@ def run():
 
     sales_headers = login(client, "sales")
     admin_headers = login(client, "admin")
+    # 非法角色被 DB CHECK 拒绝后，不存在可登录账号；未知用户与错误密码仍应 401
     assert_login_rejected(client, "supervisor")
     assert_login_rejected(client, "trainer")
+    assert_login_rejected(client, "no_such_user")
 
     response = client.post(
         "/api/voice/transcribe",
