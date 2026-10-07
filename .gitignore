@@ -37,6 +37,7 @@ dist/
 build/
 frontend/dist/
 frontend/build/
+output/
 
 # Local data and uploads
 data/

@@ -44,6 +44,16 @@ def mask_api_key(api_key: str) -> str:
 
 
 def _fernet() -> Fernet:
+    # 优先使用独立 secret_key；未配置时回退 jwt_secret 派生，兼容旧密文
+    source = settings.secret_key or settings.jwt_secret
+    digest = hashlib.sha256(source.encode("utf-8")).digest()
+    return Fernet(base64.urlsafe_b64encode(digest))
+
+
+def _fernet_fallback() -> Fernet | None:
+    """secret_key 已配置时，返回旧 jwt_secret 派生密钥，用于解密历史密文。"""
+    if not settings.secret_key:
+        return None
     digest = hashlib.sha256(settings.jwt_secret.encode("utf-8")).digest()
     return Fernet(base64.urlsafe_b64encode(digest))
 
@@ -57,10 +67,17 @@ def _decrypt_api_key(value: str) -> str:
         return ""
     if not value.startswith(API_KEY_PREFIX):
         return value
+    token = value[len(API_KEY_PREFIX) :].encode("utf-8")
     try:
-        return _fernet().decrypt(value[len(API_KEY_PREFIX) :].encode("utf-8")).decode("utf-8")
+        return _fernet().decrypt(token).decode("utf-8")
     except InvalidToken:
-        return ""
+        legacy = _fernet_fallback()
+        if legacy is None:
+            return ""
+        try:
+            return legacy.decrypt(token).decode("utf-8")
+        except InvalidToken:
+            return ""
 
 
 def normalize_base_url(base_url: str | None) -> str:

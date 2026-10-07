@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.models import KnowledgeItem, TrainingSession
 
 
-GENERIC_VALUES = {"", "通用", "閫氱敤", "闁氨鏁?"}
+GENERIC_VALUES = {"", "通用"}
 
 # 真实型号 → 相关工艺/场景词（命中型号且 session 提到工艺词时加一点分）
 _MODEL_PROCESS_HINTS = {
