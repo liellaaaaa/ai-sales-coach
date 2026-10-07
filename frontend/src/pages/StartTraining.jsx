@@ -172,7 +172,7 @@ export default function StartTraining({ onStarted, onError, recordCount, user })
                 <label>客户名称<input value={form.customer_name} onChange={(e) => updateSetup({ customer_name: e.target.value })} /></label>
                 <label>产品<input value={form.product_name} onChange={(e) => updateSetup({ product_name: e.target.value })} /></label>
                 <label>客户类型<select value={form.customer_type} onChange={(e) => updateSetup({ customer_type: e.target.value })}>{["老客户，订单减少", "新客户，价格敏感", "技术型客户，关注工艺", "渠道客户，关注交期"].map((item) => <option key={item}>{item}</option>)}</select></label>
-                <label className="demand-field">需求<textarea rows={2} value={form.product_need} onChange={(e) => updateSetup({ product_need: e.target.value })} /></label>
+                <label className="demand-field">需求<textarea rows={3} value={form.product_need} onChange={(e) => updateSetup({ product_need: e.target.value })} placeholder="客户想解决什么问题、有什么硬条件" /></label>
               </div>
               <button type="button" className="text-button extra-toggle" onClick={() => setShowExtraFields((v) => !v)} aria-expanded={showExtraFields}>
                 {showExtraFields ? "收起客户设定" : "展开客户设定（难度 / 性格 / 关注点）"}
@@ -189,11 +189,11 @@ export default function StartTraining({ onStarted, onError, recordCount, user })
             <div className={`coach-panel ${isOpportunity ? "visible" : ""}`}>
               <div className="coach-panel-inner">
                 <div className="section-title"><h4>商机推进诊断</h4><span className="tag">推进教练专用</span></div>
-                <div className="form">
-                  <label>最近一次沟通结果<input value={form.last_contact} onChange={(e) => updateSetup({ last_contact: e.target.value })} /></label>
+                <div className="form coach-form">
+                  <label>最近一次沟通结果<textarea rows={3} value={form.last_contact} onChange={(e) => updateSetup({ last_contact: e.target.value })} placeholder="约了谁、谈到哪一步、还差什么" /></label>
                   <label>关键阻碍<select value={form.decision_blocker} onChange={(e) => updateSetup({ decision_blocker: e.target.value })}>{["关键人未参与", "价格未达预期", "样品或测试未完成", "账期或付款压力", "竞品正在替代"].map((item) => <option key={item}>{item}</option>)}</select></label>
                   <label>下一步里程碑<select value={form.next_milestone} onChange={(e) => updateSetup({ next_milestone: e.target.value })}>{["约到关键人会议", "取得样品或测试条件", "确认报价反馈", "确认合同或订单节点", "确认回款时间"].map((item) => <option key={item}>{item}</option>)}</select></label>
-                  <label>关键人参与情况<input value={form.stakeholder} onChange={(e) => updateSetup({ stakeholder: e.target.value })} /></label>
+                  <label>关键人参与情况<textarea rows={3} value={form.stakeholder} onChange={(e) => updateSetup({ stakeholder: e.target.value })} placeholder="采购 / 技术 / 老板分别谁参与、卡在哪" /></label>
                 </div>
               </div>
             </div>

@@ -7754,6 +7754,13 @@ fieldset:disabled button:hover {
     font-size: 15px;
   }
 
+  .coach-form label textarea,
+  .form label textarea,
+  .field textarea {
+    min-height: 88px;
+    height: auto;
+  }
+
   /* ===== 对话页：IM 布局 ===== */
   .view-chat .workspace {
     padding-top: 8px;
@@ -8345,9 +8352,24 @@ fieldset:disabled button:hover {
 
 .form label textarea,
 .field textarea {
+  width: 100%;
   min-height: 72px;
   resize: vertical;
-  line-height: 1.5;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.coach-form {
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.coach-form label textarea {
+  min-height: 88px;
+  font-size: inherit;
+  font-family: inherit;
 }
 
 .radar-label {
