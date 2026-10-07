@@ -28,7 +28,7 @@ def validate_settings() -> list[str]:
     """启动自检：返回告警列表（空表示健康）。"""
     warnings: list[str] = []
     using_default_secret = settings.jwt_secret.startswith("change-me")
-    if using_default_secret and "sqlite" not in settings.database_url:
+    if using_default_secret:
         warnings.append(
             "SALES_COACH_JWT_SECRET 仍为默认值"
             + ("，且未配置 SALES_COACH_SECRET_KEY" if not settings.secret_key else "")

@@ -1,3 +1,4 @@
+from app.db.migrations import ensure_runtime_schema
 from app.db.session import Base, SessionLocal, engine
 from app.models import KnowledgeItem, Team, User
 from app.services.auth import hash_password
@@ -95,6 +96,7 @@ def seed_knowledge(db):
 
 def main():
     Base.metadata.create_all(bind=engine)
+    ensure_runtime_schema()
     db = SessionLocal()
     try:
         team = get_or_create_team(db, "华南销售一组")
