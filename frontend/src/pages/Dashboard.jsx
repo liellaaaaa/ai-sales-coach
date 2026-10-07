@@ -8,12 +8,61 @@ import {
 import AbilityRadar from "../components/AbilityRadar";
 import { Empty } from "../components/Layout";
 
-function DistributionRow({ item }) {
+function PieChart({ items, title }) {
+  const rows = (items || []).filter((item) => item.value > 0).slice(0, 6);
+  const total = rows.reduce((sum, item) => sum + (Number(item.value) || 0), 0);
+  const colors = ["#1a73e8", "#34a853", "#fbbc04", "#ea4335", "#7c4dff", "#00b8a9"];
+  const size = 120;
+  const radius = 48;
+  const cx = size / 2;
+  const cy = size / 2;
+  let angle = -Math.PI / 2;
+  const slices = rows.map((item, index) => {
+    const ratio = total ? item.value / total : 0;
+    const start = angle;
+    const end = angle + ratio * Math.PI * 2;
+    angle = end;
+    const x1 = cx + radius * Math.cos(start);
+    const y1 = cy + radius * Math.sin(start);
+    const x2 = cx + radius * Math.cos(end);
+    const y2 = cy + radius * Math.sin(end);
+    const large = ratio > 0.5 ? 1 : 0;
+    return {
+      ...item,
+      color: colors[index % colors.length],
+      percent: Math.round(ratio * 100),
+      path: rows.length === 1
+        ? `M ${cx - radius} ${cy} A ${radius} ${radius} 0 1 1 ${cx + radius} ${cy} A ${radius} ${radius} 0 1 1 ${cx - radius} ${cy} Z`
+        : `M ${cx} ${cy} L ${x1} ${y1} A ${radius} ${radius} 0 ${large} 1 ${x2} ${y2} Z`,
+    };
+  });
+
   return (
-    <div className="distribution-row">
-      <span>{item.name}</span>
-      <i style={{ "--value": `${item.percent}%` }}><b /></i>
-      <em>{item.value}</em>
+    <div className="pie-block">
+      <b className="pie-title">{title}</b>
+      {!rows.length ? (
+        <p className="small">暂无分布数据。</p>
+      ) : (
+        <div className="pie-layout">
+          <svg className="pie-svg" viewBox={`0 0 ${size} ${size}`} role="img" aria-label={`${title}分布`}>
+            {slices.map((slice) => (
+              <path key={slice.name} d={slice.path} fill={slice.color} />
+            ))}
+            <circle cx={cx} cy={cy} r="28" fill="#fff" />
+            <text x={cx} y={cy - 2} textAnchor="middle" dominantBaseline="central" className="pie-center-num">{total}</text>
+            <text x={cx} y={cy + 12} textAnchor="middle" dominantBaseline="central" className="pie-center-label">次</text>
+          </svg>
+          <ul className="pie-legend">
+            {slices.map((slice) => (
+              <li key={slice.name}>
+                <i style={{ background: slice.color }} />
+                <span>{slice.name}</span>
+                <em>{slice.percent}%</em>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
@@ -133,9 +182,9 @@ export default function Dashboard({ summary }) {
                 <div><span>训练结构</span><h4>高频场景与阶段</h4></div>
                 <p>看最近训练是否过度集中。</p>
               </div>
-              <div className="distribution-columns">
-                <div><b>目标 Top 5</b>{goals.length ? goals.map((item) => <DistributionRow item={item} key={item.name} />) : <p className="small">暂无训练目标分布。</p>}</div>
-                <div><b>阶段覆盖</b>{stages.length ? stages.map((item) => <DistributionRow item={item} key={item.name} />) : <p className="small">暂无商机阶段分布。</p>}</div>
+              <div className="distribution-columns pie-columns">
+                <PieChart items={goals} title="目标分布" />
+                <PieChart items={stages} title="阶段覆盖" />
               </div>
             </section>
           </div>
