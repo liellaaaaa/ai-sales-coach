@@ -8632,6 +8632,225 @@ fieldset:disabled button:hover {
   color: #243044;
 }
 
+/* ---- 开放画布训练配置（无大卡片） ---- */
+.setup-canvas {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+  padding: 8px 0 28px;
+}
+
+.flow-section {
+  display: grid;
+  gap: 16px;
+  padding: 22px 0 26px;
+  border-top: 1px solid rgba(214, 222, 234, 0.9);
+  min-width: 0;
+}
+
+.flow-section:first-of-type {
+  border-top: 0;
+  padding-top: 8px;
+}
+
+.flow-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.flow-section-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.flow-section-title .flow-index {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #eef3fa;
+  color: #3d4f66;
+  font-size: 12px;
+  font-weight: 800;
+  margin-top: 2px;
+}
+
+.flow-section-title h4 {
+  margin: 0;
+  color: #1f2937;
+  font-size: 16px;
+  font-weight: 780;
+}
+
+.flow-section-title .hint {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+}
+
+.flow-section-right {
+  flex: 0 0 auto;
+}
+
+.goal-rec {
+  margin-left: auto;
+  border-radius: 999px;
+  background: #e7f6ea;
+  color: #176b45;
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 760;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+
+.start-rail {
+  position: sticky;
+  bottom: 12px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 8px;
+  padding: 12px 14px;
+  border: 1px solid rgba(198, 210, 226, 0.95);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 12px 32px rgba(31, 47, 70, 0.12);
+  backdrop-filter: blur(10px);
+}
+
+.start-rail-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: #667287;
+  font-size: 12px;
+}
+
+.start-rail-summary span,
+.start-rail-summary b {
+  border-radius: 999px;
+  background: #f4f7fb;
+  border: 1px solid #e2e8f1;
+  padding: 5px 10px;
+  white-space: nowrap;
+}
+
+.start-rail-summary b {
+  color: #1f2a3a;
+  font-weight: 760;
+}
+
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(18, 28, 44, 0.42);
+  animation: fadeIn 180ms ease both;
+}
+
+.confirm-sheet {
+  width: min(560px, 100%);
+  max-height: min(86vh, 720px);
+  overflow: auto;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.22);
+  padding: 22px;
+  display: grid;
+  gap: 16px;
+  animation: confirmIn 220ms var(--ease) both;
+}
+
+.confirm-head h3 {
+  margin: 0 0 6px;
+  font-size: 18px;
+  color: #1f2937;
+}
+
+.confirm-head .hint {
+  margin: 0;
+}
+
+.confirm-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+}
+
+.confirm-grid > div {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid #e6ebf2;
+  border-radius: 10px;
+  background: #f8fafc;
+  min-width: 0;
+}
+
+.confirm-grid span {
+  color: #7a8494;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.confirm-grid b {
+  color: #222832;
+  font-size: 13px;
+  font-weight: 760;
+  overflow-wrap: anywhere;
+}
+
+.confirm-background {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid #e6ebf2;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.confirm-background span {
+  color: #7a8494;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.confirm-background p {
+  margin: 6px 0 0;
+  color: #4b5565;
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes confirmIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 .dashboard-empty-cta {
   gap: 12px;
 }
@@ -8813,5 +9032,37 @@ fieldset:disabled button:hover {
 
   .mode-cards {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .flow-section-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .start-rail {
+    flex-direction: column;
+    align-items: stretch;
+    bottom: 8px;
+    padding: 12px;
+  }
+
+  .start-rail .primary,
+  .start-rail .submit-waiting {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .confirm-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .confirm-actions {
+    flex-direction: column-reverse;
+  }
+
+  .confirm-actions .primary,
+  .confirm-actions .secondary {
+    width: 100%;
   }
 }

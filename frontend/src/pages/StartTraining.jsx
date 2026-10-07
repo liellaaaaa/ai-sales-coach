@@ -1,114 +1,136 @@
-import React, { useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
-  TRAINING_TYPES,
   OPPORTUNITY_MODE,
   opportunityStages,
-  stageTrainingGoals,
-  trainingGoals,
   customerRelationshipOptions,
   customerPersonaOptions,
   customerDifficultyOptions,
   customerPersonalityOptions,
   customerConcernOptions,
-  inferCustomerRelationship,
+  strongRelationshipGoals,
+  getStageGoals,
+  resolveGoalForStage,
+  apiGoalFromDisplay,
   trainingTemplates,
   defaultForm,
 } from "../constants/training";
 import { buildTrainingPayload } from "../utils/training";
 import { goalIcon } from "../components/Layout";
 
+function SectionHead({ index, title, desc, right }) {
+  return (
+    <div className="flow-section-head">
+      <div className="flow-section-title">
+        <span className="flow-index" aria-hidden="true">{index}</span>
+        <div>
+          <h4>{title}</h4>
+          {desc ? <p className="hint">{desc}</p> : null}
+        </div>
+      </div>
+      {right ? <div className="flow-section-right">{right}</div> : null}
+    </div>
+  );
+}
+
 export default function StartTraining({ onStarted, onError, recordCount, user }) {
   const ownerName = user?.name || user?.username || "";
   const [form, setForm] = useState(() => ({ ...defaultForm, owner_name: ownerName }));
-  const [stageExpanded, setStageExpanded] = useState(false);
-  const [setupSaved, setSetupSaved] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showExtraFields, setShowExtraFields] = useState(false);
+  const [showFlowRef, setShowFlowRef] = useState(false);
+  const [relationshipTouched, setRelationshipTouched] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const stageTabsRef = useRef(null);
+
   const isOpportunity = form.training_type === OPPORTUNITY_MODE;
   const stageIndex = Math.max(0, opportunityStages.findIndex((item) => item.name === form.stage));
   const activeStage = opportunityStages[stageIndex];
-  const activeGoals = stageTrainingGoals[activeStage.name] || trainingGoals;
+  const activeGoals = useMemo(() => getStageGoals(form.stage), [form.stage]);
   const visibleTemplates = trainingTemplates.filter((item) => item.training_type === form.training_type);
-  const trainingStep = isSubmitting
-    ? { step: "第 3 步 / 3 步", label: "创建训练" }
-    : setupSaved
-      ? { step: "第 2 步 / 3 步", label: "阶段目标" }
-      : { step: "第 1 步 / 3 步", label: "基础信息" };
 
-  async function submit(event) {
-    event.preventDefault();
-    if (!setupSaved) {
-      onError("请先保存客户信息，再进入下一步训练配置。");
-      return;
-    }
-    const nextForm = { ...form, owner_name: ownerName || form.owner_name };
-    try {
-      setIsSubmitting(true);
-      await onStarted(buildTrainingPayload(nextForm), form.training_type, nextForm);
-    } catch (err) {
-      setIsSubmitting(false);
-      onError(err.message);
-    }
+  function updateForm(patch) {
+    setForm((prev) => ({ ...prev, ...patch }));
+    onError("");
   }
 
-  function updateSetup(patch) {
-    setForm({ ...form, ...patch });
-    setSetupSaved(false);
+  function applyRelationshipGoalSignal(goalName) {
+    if (relationshipTouched) return form.customer_type;
+    const cold = strongRelationshipGoals["陌拜新客户"] || [];
+    const regular = strongRelationshipGoals["老客户"] || [];
+    if (cold.includes(goalName)) return "陌拜新客户";
+    if (regular.includes(goalName)) return "老客户";
+    return form.customer_type;
   }
 
-  function saveSetup() {
-    const nextOwner = ownerName || form.owner_name;
+  function validateSetup() {
     if (!form.customer_name.trim() || !form.product_name.trim() || !form.customer_type.trim() || !form.product_need.trim()) {
-      onError("请先补齐客户名称、产品、客户关系和需求。");
-      return;
+      return "请先补齐客户名称、产品、客户关系和需求。";
     }
     if (isOpportunity && (!form.last_contact.trim() || !form.stakeholder.trim())) {
-      onError("商机推进教练需要补充最近一次沟通结果和关键人参与情况。");
-      return;
+      return "商机推进教练需要补充最近一次沟通结果和关键人参与情况。";
     }
-    onError("");
-    setForm((prev) => ({ ...prev, owner_name: nextOwner }));
-    setSetupSaved(true);
+    if (!form.stage || !form.goal) {
+      return "请选择商机阶段和训练目标。";
+    }
+    return "";
   }
 
   function applyTemplate(template) {
     const nextStage = opportunityStages.find((stage) => stage.name === template.stage) || opportunityStages[0];
-    const nextGoals = stageTrainingGoals[nextStage.name] || trainingGoals;
-    const nextGoal = nextGoals.some((goal) => goal.name === template.goal) ? template.goal : nextGoals[0].name;
-    setForm({
-      ...form,
+    const nextGoal = resolveGoalForStage(nextStage.name, template.goal);
+    const nextRelationship = template.customer_type || applyRelationshipGoalSignal(nextGoal);
+    setForm((prev) => ({
+      ...prev,
       ...template,
       stage: nextStage.name,
       goal: nextGoal,
-      customer_type: template.customer_type || inferCustomerRelationship({ stage: nextStage.name, goal: nextGoal, training_type: form.training_type }),
+      customer_type: nextRelationship,
       template_id: template.id,
-    });
-    setSetupSaved(false);
+    }));
+    setRelationshipTouched(Boolean(template.customer_type));
     onError("");
   }
 
   function selectStage(stage) {
-    const nextGoals = stageTrainingGoals[stage.name] || trainingGoals;
-    const nextGoal = nextGoals.some((goal) => goal.name === form.goal) ? form.goal : nextGoals[0].name;
-    // 阶段强信号才改客户关系：了解商机→陌拜，回款→老客；其余保留手选
-    let nextRelationship = form.customer_type;
-    if (stage.name === "了解商机") nextRelationship = "陌拜新客户";
-    else if (stage.name === "回款") nextRelationship = "老客户";
-    else if (["线索判断", "首次触达", "约到拜访"].includes(nextGoal)) nextRelationship = "陌拜新客户";
-    else if (["回款交涉", "老客维护", "复购推进", "服务稳定"].includes(nextGoal)) nextRelationship = "老客户";
-    setForm({ ...form, stage: stage.name, goal: nextGoal, customer_type: nextRelationship });
+    const nextGoal = resolveGoalForStage(stage.name, form.goal);
+    const nextRelationship = applyRelationshipGoalSignal(nextGoal);
+    setForm((prev) => ({
+      ...prev,
+      stage: stage.name,
+      goal: nextGoal,
+      customer_type: nextRelationship,
+    }));
     requestAnimationFrame(() => {
-      stageTabsRef.current?.querySelector(".stage-tab.active")?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+      stageTabsRef.current?.querySelector(".stage-pill.active")?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
     });
   }
 
   function selectGoal(goalName) {
-    // 仅强信号目标自动校正客户关系，避免覆盖用户手选
-    let nextRelationship = form.customer_type;
-    if (["线索判断", "首次触达", "约到拜访"].includes(goalName)) nextRelationship = "陌拜新客户";
-    else if (["回款交涉", "老客维护", "复购推进", "服务稳定"].includes(goalName)) nextRelationship = "老客户";
-    setForm({ ...form, goal: goalName, customer_type: nextRelationship });
+    const nextRelationship = applyRelationshipGoalSignal(goalName);
+    setForm((prev) => ({ ...prev, goal: goalName, customer_type: nextRelationship }));
+  }
+
+  function openConfirm(event) {
+    event.preventDefault();
+    const message = validateSetup();
+    if (message) {
+      onError(message);
+      return;
+    }
+    onError("");
+    setShowConfirm(true);
+  }
+
+  async function confirmStart() {
+    const nextForm = { ...form, owner_name: ownerName || form.owner_name };
+    try {
+      setIsSubmitting(true);
+      await onStarted(buildTrainingPayload(nextForm), form.training_type, nextForm);
+      setShowConfirm(false);
+    } catch (err) {
+      setIsSubmitting(false);
+      onError(err.message);
+    }
   }
 
   return (
@@ -116,8 +138,8 @@ export default function StartTraining({ onStarted, onError, recordCount, user })
       <div className="hero start-hero">
         <div className="intro">
           <span className="eyebrow">训练闭环</span>
-          <h3>先用一句话发起训练</h3>
-          <p className="hint">选模式 → 点模板或填客户信息 → 保存后选目标开练。</p>
+          <h3>一页配好，开练前再确认一次</h3>
+          <p className="hint">模式和客户信息填好，选阶段与目标后点开始；弹窗核对无误再进入训练。</p>
         </div>
         <div className="metric-card compact-metric">
           <span className="small">本地训练记录</span>
@@ -125,183 +147,234 @@ export default function StartTraining({ onStarted, onError, recordCount, user })
           <p className="small">完成训练后自动保存</p>
         </div>
       </div>
-      <form className="panel" onSubmit={submit}>
-        <div className="panel-inner">
-          <div className={`panel-head ${setupSaved ? "panel-head-saved" : ""}`}>
-            {!setupSaved ? (
-              <div className={`mode-switch-block ${isOpportunity ? "opportunity" : ""}`}>
-                <div className="mode-cards" role="radiogroup" aria-label="训练模式">
-                  {[
-                    ["客户情景陪练", "对话练话术", "和 AI 客户多轮对话，结束后出复盘报告"],
-                    ["商机推进教练", "出推进方案", "不进对话，直接生成判断 / 策略 / 动作"],
-                  ].map(([mode, short, desc]) => (
-                    <button
-                      type="button"
-                      key={mode}
-                      role="radio"
-                      aria-checked={form.training_type === mode}
-                      className={`mode-card ${form.training_type === mode ? "active" : ""}`}
-                      onClick={() => updateSetup({ training_type: mode })}
-                    >
-                      <b>{short}</b>
-                      <span>{desc}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <span className="panel-head-label">训练配置</span>
-            )}
-            <span className={`training-step-pill ${isSubmitting ? "is-active" : ""}`} aria-live="polite">
-              <span>{trainingStep.step}</span>
-              <b>{trainingStep.label}</b>
-            </span>
+
+      <form className="setup-canvas" onSubmit={openConfirm}>
+        <section className="flow-section">
+          <SectionHead
+            index="1"
+            title="练什么模式"
+            desc="情景陪练进对话；推进教练出方案。"
+            right={<span className="training-step-pill"><span>第 1 段</span><b>模式与模板</b></span>}
+          />
+          <div className="mode-cards" role="radiogroup" aria-label="训练模式">
+            {[
+              ["客户情景陪练", "对话练话术", "和 AI 客户多轮对话，结束后出复盘报告"],
+              ["商机推进教练", "出推进方案", "不进对话，直接生成判断 / 策略 / 动作"],
+            ].map(([mode, short, desc]) => (
+              <button
+                type="button"
+                key={mode}
+                role="radio"
+                aria-checked={form.training_type === mode}
+                className={`mode-card ${form.training_type === mode ? "active" : ""}`}
+                onClick={() => updateForm({ training_type: mode })}
+              >
+                <b>{short}</b>
+                <span>{desc}</span>
+              </button>
+            ))}
           </div>
 
-          {!setupSaved && <div className="setup-block">
-            <div className="template-block">
-              <div className="section-title"><h4>常用训练模板</h4></div>
-              <div className="template-list">
-                {visibleTemplates.map((template) => (
+          <div className="template-block">
+            <div className="section-title"><h4>常用训练模板</h4><span className="hint">点选后可继续改</span></div>
+            <div className="template-list">
+              {visibleTemplates.map((template) => (
+                <button
+                  key={template.id}
+                  type="button"
+                  className={`template-chip ${form.template_id === template.id ? "active" : ""}`}
+                  onClick={() => applyTemplate(template)}
+                >
+                  <span className="template-chip-top">
+                    <b>{template.title}</b>
+                    <em>{template.customer_type}</em>
+                  </span>
+                  <span className="template-chip-sub">{template.subtitle}</span>
+                  <small>{template.stage} · {template.goal}</small>
+                </button>
+              ))}
+              {!visibleTemplates.length && <p className="hint">该模式下暂无模板，可直接填写客户信息。</p>}
+            </div>
+          </div>
+        </section>
+
+        <section className="flow-section">
+          <SectionHead
+            index="2"
+            title="跟谁练"
+            desc="客户关系只表示有没有合作；性格和关注点独立选择。"
+            right={<span className="training-step-pill"><span>第 2 段</span><b>客户信息</b></span>}
+          />
+          <div className="form customer-info-form">
+            <label>客户名称<input value={form.customer_name} onChange={(e) => updateForm({ customer_name: e.target.value })} /></label>
+            <label>产品<input value={form.product_name} onChange={(e) => updateForm({ product_name: e.target.value })} /></label>
+            <label>
+              客户关系
+              <select
+                value={form.customer_type}
+                onChange={(e) => {
+                  setRelationshipTouched(true);
+                  updateForm({ customer_type: e.target.value });
+                }}
+              >
+                {customerRelationshipOptions.map((item) => <option key={item}>{item}</option>)}
+              </select>
+            </label>
+            <label>客户画像<select value={form.customer_persona || ""} onChange={(e) => updateForm({ customer_persona: e.target.value })}>{customerPersonaOptions.map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label className="demand-field">需求<textarea rows={3} value={form.product_need} onChange={(e) => updateForm({ product_need: e.target.value })} placeholder="客户想解决什么问题、有什么硬条件" /></label>
+          </div>
+
+          <button type="button" className="text-button extra-toggle" onClick={() => setShowExtraFields((v) => !v)} aria-expanded={showExtraFields}>
+            {showExtraFields ? "收起客户设定" : "展开客户设定（难度 / 性格 / 关注点）"}
+          </button>
+          {showExtraFields && (
+            <div className="profile-tuning extra-fields">
+              <label>客户难度<select value={form.customer_difficulty} onChange={(e) => updateForm({ customer_difficulty: e.target.value })}>{customerDifficultyOptions.map((item) => <option key={item}>{item}</option>)}</select></label>
+              <label>客户性格<select value={form.customer_personality} onChange={(e) => updateForm({ customer_personality: e.target.value })}>{customerPersonalityOptions.map((item) => <option key={item}>{item}</option>)}</select></label>
+              <label>核心关注<select value={form.customer_concern} onChange={(e) => updateForm({ customer_concern: e.target.value })}>{customerConcernOptions.map((item) => <option key={item}>{item}</option>)}</select></label>
+            </div>
+          )}
+
+          <div className={`coach-panel ${isOpportunity ? "visible" : ""}`}>
+            <div className="coach-panel-inner">
+              <div className="section-title"><h4>商机推进诊断</h4><span className="tag">推进教练专用</span></div>
+              <div className="form coach-form">
+                <label>最近一次沟通结果<textarea rows={3} value={form.last_contact} onChange={(e) => updateForm({ last_contact: e.target.value })} placeholder="约了谁、谈到哪一步、还差什么" /></label>
+                <label>关键阻碍<select value={form.decision_blocker} onChange={(e) => updateForm({ decision_blocker: e.target.value })}>{["关键人未参与", "价格未达预期", "样品或测试未完成", "账期或付款压力", "竞品正在替代"].map((item) => <option key={item}>{item}</option>)}</select></label>
+                <label>下一步里程碑<select value={form.next_milestone} onChange={(e) => updateForm({ next_milestone: e.target.value })}>{["约到关键人会议", "取得样品或测试条件", "确认报价反馈", "确认合同或订单节点", "确认回款时间"].map((item) => <option key={item}>{item}</option>)}</select></label>
+                <label>关键人参与情况<textarea rows={3} value={form.stakeholder} onChange={(e) => updateForm({ stakeholder: e.target.value })} placeholder="采购 / 技术 / 老板分别谁参与、卡在哪" /></label>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="flow-section">
+          <SectionHead
+            index="3"
+            title="这次练什么"
+            desc="阶段决定位置，目标决定这一练的重点。目标只显示当前阶段相关项。"
+            right={<span className="training-step-pill is-active"><span>第 3 段</span><b>阶段与目标</b></span>}
+          />
+
+          <div className="quick-start">
+            <div className="section-title stage-section-title">
+              <h4>商机阶段</h4>
+              <span className="hint">{activeStage.note}</span>
+            </div>
+            <div className="stage-scroll">
+              <div className="stage-scroll-track" ref={stageTabsRef}>
+                {opportunityStages.map((stage) => (
                   <button
-                    key={template.id}
+                    key={stage.name}
                     type="button"
-                    className={`template-chip ${form.template_id === template.id ? "active" : ""}`}
-                    onClick={() => applyTemplate(template)}
+                    className={`stage-pill ${form.stage === stage.name ? "active" : ""}`}
+                    onClick={() => selectStage(stage)}
                   >
-                    <span className="template-chip-top">
-                      <b>{template.title}</b>
-                      <em>{template.customer_type}</em>
-                    </span>
-                    <span className="template-chip-sub">{template.subtitle}</span>
-                    <small>{template.stage} · {template.customer_personality} · {template.customer_concern}</small>
-                  </button>
-                ))}
-                {!visibleTemplates.length && <p className="hint">该模式下暂无模板，可直接填写客户信息。</p>}
-              </div>
-            </div>
-
-            <div className="basic-fields">
-              <div className="section-title"><h4>客户信息</h4></div>
-              <div className="form customer-info-form">
-                <label>客户名称<input value={form.customer_name} onChange={(e) => updateSetup({ customer_name: e.target.value })} /></label>
-                <label>产品<input value={form.product_name} onChange={(e) => updateSetup({ product_name: e.target.value })} /></label>
-                <label>客户关系<select value={form.customer_type} onChange={(e) => updateSetup({ customer_type: e.target.value })}>{customerRelationshipOptions.map((item) => <option key={item}>{item}</option>)}</select></label>
-                <label>客户画像<select value={form.customer_persona || ""} onChange={(e) => updateSetup({ customer_persona: e.target.value })}>{customerPersonaOptions.map((item) => <option key={item}>{item}</option>)}</select></label>
-                <label className="demand-field">需求<textarea rows={3} value={form.product_need} onChange={(e) => updateSetup({ product_need: e.target.value })} placeholder="客户想解决什么问题、有什么硬条件" /></label>
-              </div>
-              <button type="button" className="text-button extra-toggle" onClick={() => setShowExtraFields((v) => !v)} aria-expanded={showExtraFields}>
-                {showExtraFields ? "收起客户设定" : "展开客户设定（难度 / 性格 / 关注点）"}
-              </button>
-              {showExtraFields && (
-                <div className="profile-tuning extra-fields">
-                  <label>客户难度<select value={form.customer_difficulty} onChange={(e) => updateSetup({ customer_difficulty: e.target.value })}>{customerDifficultyOptions.map((item) => <option key={item}>{item}</option>)}</select></label>
-                  <label>客户性格<select value={form.customer_personality} onChange={(e) => updateSetup({ customer_personality: e.target.value })}>{customerPersonalityOptions.map((item) => <option key={item}>{item}</option>)}</select></label>
-                  <label>核心关注<select value={form.customer_concern} onChange={(e) => updateSetup({ customer_concern: e.target.value })}>{customerConcernOptions.map((item) => <option key={item}>{item}</option>)}</select></label>
-                </div>
-              )}
-              <p className="hint">客户关系只表示有没有合作；性格和关注点独立选择。陌拜新客户也可以是专业型、关注品质或工艺适配，不一定是价格敏感。</p>
-            </div>
-
-            <div className={`coach-panel ${isOpportunity ? "visible" : ""}`}>
-              <div className="coach-panel-inner">
-                <div className="section-title"><h4>商机推进诊断</h4><span className="tag">推进教练专用</span></div>
-                <div className="form coach-form">
-                  <label>最近一次沟通结果<textarea rows={3} value={form.last_contact} onChange={(e) => updateSetup({ last_contact: e.target.value })} placeholder="约了谁、谈到哪一步、还差什么" /></label>
-                  <label>关键阻碍<select value={form.decision_blocker} onChange={(e) => updateSetup({ decision_blocker: e.target.value })}>{["关键人未参与", "价格未达预期", "样品或测试未完成", "账期或付款压力", "竞品正在替代"].map((item) => <option key={item}>{item}</option>)}</select></label>
-                  <label>下一步里程碑<select value={form.next_milestone} onChange={(e) => updateSetup({ next_milestone: e.target.value })}>{["约到关键人会议", "取得样品或测试条件", "确认报价反馈", "确认合同或订单节点", "确认回款时间"].map((item) => <option key={item}>{item}</option>)}</select></label>
-                  <label>关键人参与情况<textarea rows={3} value={form.stakeholder} onChange={(e) => updateSetup({ stakeholder: e.target.value })} placeholder="采购 / 技术 / 老板分别谁参与、卡在哪" /></label>
-                </div>
-              </div>
-            </div>
-
-            <div className="setup-actions">
-              <span className="setup-state">保存后直接展开商机阶段和训练目标。</span>
-              <button className="primary" type="button" onClick={saveSetup}>保存并进入下一步</button>
-            </div>
-          </div>}
-
-          {setupSaved && <div className="training-config" aria-live="polite">
-            <div className="info-overview">
-              <div className="info-overview-head">
-                <div>
-                  <span className={`mode-badge ${isOpportunity ? "opportunity" : "scenario"}`}>{form.training_type}</span>
-                  <h4>{form.customer_name}</h4>
-                  <p>{form.customer_type}{form.customer_persona ? ` · ${form.customer_persona}` : ""} · {form.product_name} · {form.product_need}</p>
-                </div>
-                <div className="info-actions">
-                  <span className="saved-badge">已保存</span>
-                  <button className="secondary" type="button" onClick={() => setSetupSaved(false)}>编辑</button>
-                </div>
-              </div>
-              <div className="info-chips">
-                <span>{form.customer_type}</span>
-                {form.customer_persona && <span>{form.customer_persona}</span>}
-                {isOpportunity && <span>{form.decision_blocker}</span>}
-                {isOpportunity && <span>{form.next_milestone}</span>}
-              </div>
-            </div>
-
-            <div className="quick-start">
-              <div className="section-title stage-section-title">
-                <h4>商机阶段</h4>
-                <span className="hint">当前：<b>{activeStage.name}</b></span>
-                <span className="tag">必选</span>
-              </div>
-              <div className="stage-scroll">
-                <div className="stage-scroll-track" ref={stageTabsRef}>
-                  {opportunityStages.map((stage) => (
-                    <button
-                      key={stage.name}
-                      type="button"
-                      className={`stage-pill ${form.stage === stage.name ? "active" : ""}`}
-                      onClick={() => selectStage(stage)}
-                    >
-                      {stage.name}
-                    </button>
-                  ))}
-                </div>
-                <span className="stage-scroll-fade" aria-hidden="true"><i>›</i></span>
-              </div>
-              <p className="stage-note hint">{activeStage.note}</p>
-              <button type="button" className="text-button stage-toggle-label" onClick={() => setStageExpanded(!stageExpanded)} aria-expanded={stageExpanded}>
-                {stageExpanded ? "收起该阶段动作" : `查看动作（${activeStage.flow.length}）`}
-              </button>
-              {stageExpanded && (
-                <div className="flow-list compact-flow">
-                  {activeStage.flow.map(([name, summary], index) => (
-                    <div className="flow-item" key={name}><span className="flow-index">{index + 1}</span><span><b>{name}</b><small>{summary}</small></span></div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <label className="field full">一句话描述当前客户 / 商机问题<textarea rows={4} value={form.background} onChange={(e) => setForm({ ...form, background: e.target.value })} placeholder="客户是谁、卡在哪里、你希望推进到哪一步" /></label>
-
-            <div className="stage-goals">
-              <div className="section-title">
-                <h4>训练目标</h4>
-                <span className="hint">{activeStage.name} · 选一个最贴近卡点的方向</span>
-              </div>
-              <div className="goal-grid secondary-goals">
-                {activeGoals.map((goal) => (
-                  <button key={goal.id} type="button" className={`goal ${form.goal === goal.name ? "active" : ""}`} onClick={() => selectGoal(goal.name)}>
-                    <span className="goal-head"><span className="goal-mark" aria-hidden="true">{goalIcon(goal.id)}</span><b>{goal.name}</b></span>
-                    <span className="goal-desc">{goal.desc}</span>
+                    {stage.name}
                   </button>
                 ))}
               </div>
+              <span className="stage-scroll-fade" aria-hidden="true"><i>›</i></span>
             </div>
-            <div className="actions train-submit-actions">
-              {isSubmitting ? <span className="submit-waiting" role="status" aria-live="polite"><i /><span>{isOpportunity ? "正在生成推进方案，请稍等。" : "正在创建训练对话，请稍等。"}</span></span> : <span />}
-              <button className="primary" disabled={isSubmitting}>
-                {isSubmitting && <span className="button-loader" aria-hidden="true"><i /><i /><i /></span>}
-                {isSubmitting ? (isOpportunity ? "生成中" : "创建中") : (isOpportunity ? "生成推进方案" : "开始本次训练")}
-              </button>
+
+            <button type="button" className="text-button stage-toggle-label" onClick={() => setShowFlowRef((v) => !v)} aria-expanded={showFlowRef}>
+              {showFlowRef ? "收起参考动作" : `参考动作（${activeStage.flow.length}）· 不是选项`}
+            </button>
+            {showFlowRef && (
+              <div className="flow-list compact-flow">
+                {activeStage.flow.map(([name, summary], index) => (
+                  <div className="flow-item" key={name}><span className="flow-index">{index + 1}</span><span><b>{name}</b><small>{summary}</small></span></div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="stage-goals">
+            <div className="section-title">
+              <h4>训练目标 · 选一个</h4>
+              <span className="hint">随「{form.stage}」联动，推荐项已标出</span>
             </div>
-          </div>}
+            <div className="goal-grid secondary-goals">
+              {activeGoals.map((goal) => (
+                <button
+                  key={goal.id}
+                  type="button"
+                  className={`goal ${form.goal === goal.name ? "active" : ""}`}
+                  onClick={() => selectGoal(goal.name)}
+                >
+                  <span className="goal-head">
+                    <span className="goal-mark" aria-hidden="true">{goalIcon(goal.id)}</span>
+                    <b>{goal.name}</b>
+                    {goal.recommended ? <em className="goal-rec">推荐</em> : null}
+                  </span>
+                  <span className="goal-desc">{goal.desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <label className="field full">一句话描述当前客户 / 商机问题
+            <textarea
+              rows={4}
+              value={form.background}
+              onChange={(e) => updateForm({ background: e.target.value })}
+              placeholder="客户是谁、卡在哪里、你希望推进到哪一步"
+            />
+          </label>
+        </section>
+
+        <div className="actions train-submit-actions start-rail">
+          <div className="start-rail-summary" aria-live="polite">
+            <span>{form.training_type}</span>
+            <b>{form.stage}</b>
+            <b>{form.goal}</b>
+            <span>{form.customer_name || "未填客户"}</span>
+          </div>
+          {isSubmitting ? (
+            <span className="submit-waiting" role="status" aria-live="polite">
+              <i /><span>{isOpportunity ? "正在生成推进方案，请稍等。" : "正在创建训练对话，请稍等。"}</span>
+            </span>
+          ) : (
+            <button className="primary" type="submit">
+              {isOpportunity ? "生成推进方案" : "开始本次训练"}
+            </button>
+          )}
         </div>
       </form>
+
+      {showConfirm && (
+        <div className="confirm-overlay" role="dialog" aria-modal="true" aria-label="确认训练配置">
+          <div className="confirm-sheet">
+            <div className="confirm-head">
+              <h3>确认本次训练配置</h3>
+              <p className="hint">下面是将要创建的训练；有问题可返回修改。</p>
+            </div>
+            <div className="confirm-body">
+              <div className="confirm-grid">
+                <div><span>模式</span><b>{form.training_type}</b></div>
+                <div><span>客户</span><b>{form.customer_name}</b></div>
+                <div><span>产品</span><b>{form.product_name}</b></div>
+                <div><span>客户关系</span><b>{form.customer_type}</b></div>
+                <div><span>商机阶段</span><b>{form.stage}</b></div>
+                <div><span>训练目标</span><b>{form.goal}</b></div>
+                <div><span>客户设定</span><b>{form.customer_difficulty} · {form.customer_personality} · {form.customer_concern}</b></div>
+                {isOpportunity ? <div><span>关键阻碍</span><b>{form.decision_blocker}</b></div> : null}
+                {isOpportunity ? <div><span>下一步</span><b>{form.next_milestone}</b></div> : null}
+              </div>
+              <div className="confirm-background">
+                <span>背景摘要</span>
+                <p>{form.background}</p>
+              </div>
+            </div>
+            <div className="confirm-actions">
+              <button type="button" className="secondary" onClick={() => setShowConfirm(false)} disabled={isSubmitting}>返回修改</button>
+              <button type="button" className="primary" onClick={confirmStart} disabled={isSubmitting}>
+                {isSubmitting ? (isOpportunity ? "生成中…" : "创建中…") : (isOpportunity ? "确认生成方案" : "确认开始训练")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

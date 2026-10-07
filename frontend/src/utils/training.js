@@ -1,4 +1,4 @@
-import { OPPORTUNITY_MODE } from "../constants/training";
+import { OPPORTUNITY_MODE, apiGoalFromDisplay } from "../constants/training";
 
 export function buildTrainingPayload(form) {
   const lines = [
@@ -46,6 +46,7 @@ export function buildSetupContext(form) {
     training_profile: {
       stage: form.stage,
       goal: form.goal,
+      goal_api: apiGoalFromDisplay(form.goal),
       customer_relationship: form.customer_type,
       customer_persona: form.customer_persona || "",
       customer_difficulty: form.customer_difficulty,

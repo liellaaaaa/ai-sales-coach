@@ -64,18 +64,27 @@ export function select(label, key, form, setForm, options) {
 export function goalIcon(id) {
   const icons = {
     price: <><path d="M5 12h14"></path><path d="M8 8h8"></path><path d="M8 16h5"></path></>,
-    stalled: <><path d="M5 12h8"></path><path d="M13 7l5 5-5 5"></path><path d="M5 6h5"></path><path d="M5 18h5"></path></>,
-    technical: <><path d="M9 4h6"></path><path d="M10 4v5l-4 7a3 3 0 0 0 2.6 4.5h6.8A3 3 0 0 0 18 16l-4-7V4"></path><path d="M8 15h8"></path></>,
+    terms: <><path d="M5 12h8"></path><path d="M13 7l5 5-5 5"></path><path d="M5 6h5"></path><path d="M5 18h5"></path></>,
+    solution: <><path d="M9 4h6"></path><path d="M10 4v5l-4 7a3 3 0 0 0 2.6 4.5h6.8A3 3 0 0 0 18 16l-4-7V4"></path><path d="M8 15h8"></path></>,
+    objection: <><path d="M12 3l8 4v5c0 4.5-3.2 8-8 10-4.8-2-8-5.5-8-10V7z"></path><path d="M9 12l2 2 4-4"></path></>,
     payment: <><path d="M4 7h16v10H4z"></path><path d="M4 10h16"></path><path d="M8 15h4"></path></>,
-    retention: <><path d="M7 8a5 5 0 0 1 8.5-2.8L18 7"></path><path d="M18 4v3h-3"></path><path d="M17 16a5 5 0 0 1-8.5 2.8L6 17"></path><path d="M6 20v-3h3"></path></>,
+    retain: <><path d="M7 8a5 5 0 0 1 8.5-2.8L18 7"></path><path d="M18 4v3h-3"></path><path d="M17 16a5 5 0 0 1-8.5 2.8L6 17"></path><path d="M6 20v-3h3"></path></>,
+    repurchase: <><path d="M4 12a8 8 0 0 1 13.5-5.8"></path><path d="M18 3v4h-4"></path><path d="M20 12a8 8 0 0 1-13.5 5.8"></path><path d="M6 21v-4h4"></path></>,
     lead: <><path d="M5 19l5-5"></path><path d="M14 4l6 6-8 8H6v-6z"></path><path d="M15 9l-6 6"></path></>,
+    connect: <><path d="M8 12h8"></path><path d="M12 8v8"></path><path d="M7 7a5 5 0 0 1 7-3"></path><path d="M17 17a5 5 0 0 1-7 3"></path></>,
     visit: <><path d="M12 21s7-5.2 7-11a7 7 0 0 0-14 0c0 5.8 7 11 7 11z"></path><path d="M12 10h.01"></path></>,
     sample: <><path d="M8 4h8"></path><path d="M9 4v5l-3 8a3 3 0 0 0 2.8 4h6.4A3 3 0 0 0 18 17l-3-8V4"></path><path d="M8 15h8"></path></>,
-    stakeholder: <><path d="M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path><path d="M3.5 19a4.5 4.5 0 0 1 9 0"></path><path d="M17 9a2.5 2.5 0 1 0 0-5"></path><path d="M15 19h5"></path></>,
+    need: <><path d="M5 7h14"></path><path d="M5 12h10"></path><path d="M5 17h7"></path><path d="M16 15l3 3 3-3"></path></>,
+    advance: <><path d="M5 12h10"></path><path d="M12 7l5 5-5 5"></path><path d="M19 6v12"></path></>,
     trial: <><path d="M5 5h14v14H5z"></path><path d="M8 12l2.5 2.5L16 9"></path></>,
-    report: <><path d="M6 4h9l3 3v13H6z"></path><path d="M14 4v4h4"></path><path d="M9 13h6"></path><path d="M9 17h4"></path></>,
     contract: <><path d="M7 4h10v16H7z"></path><path d="M10 8h4"></path><path d="M10 12h4"></path><path d="M10 16h2"></path></>,
     delivery: <><path d="M4 7h10v8H4z"></path><path d="M14 10h3l3 3v2h-6z"></path><path d="M7 18h.01"></path><path d="M17 18h.01"></path></>,
+    // 旧 id 兼容
+    stalled: <><path d="M5 12h8"></path><path d="M13 7l5 5-5 5"></path><path d="M5 6h5"></path><path d="M5 18h5"></path></>,
+    technical: <><path d="M9 4h6"></path><path d="M10 4v5l-4 7a3 3 0 0 0 2.6 4.5h6.8A3 3 0 0 0 18 16l-4-7V4"></path><path d="M8 15h8"></path></>,
+    retention: <><path d="M7 8a5 5 0 0 1 8.5-2.8L18 7"></path><path d="M18 4v3h-3"></path><path d="M17 16a5 5 0 0 1-8.5 2.8L6 17"></path><path d="M6 20v-3h3"></path></>,
+    stakeholder: <><path d="M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path><path d="M3.5 19a4.5 4.5 0 0 1 9 0"></path><path d="M17 9a2.5 2.5 0 1 0 0-5"></path><path d="M15 19h5"></path></>,
+    report: <><path d="M6 4h9l3 3v13H6z"></path><path d="M14 4v4h4"></path><path d="M9 13h6"></path><path d="M9 17h4"></path></>,
     service: <><path d="M12 3l7 4v5c0 4-3 7-7 9-4-2-7-5-7-9V7z"></path><path d="M9 12l2 2 4-5"></path></>,
   };
   return <svg viewBox="0 0 24 24" aria-hidden="true">{icons[id] || icons.price}</svg>;

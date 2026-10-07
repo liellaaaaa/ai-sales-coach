@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { api, apiAudio, apiStream } from "../api";
 import { AudioPlayer, PCMStreamPlayer } from "../audio";
 import { AutoReadToggle, MicButton, PlayButton } from "../voice";
-import { standardReplies } from "../constants/training";
+import { standardReplies, normalizeGoalName } from "../constants/training";
 import { Empty } from "../components/Layout";
 
 const SPEAKER_META = {
@@ -171,7 +171,10 @@ export default function Chat({ session, restoring, onSession, onReport, onError,
   const sendingRef = useRef(false);
   const liveTipSeqRef = useRef(0);
   const salesTurns = useMemo(() => session?.messages?.filter((msg) => msg.role === "sales").length || 0, [session]);
-  const exampleReply = standardReplies[session?.goal] || standardReplies["价格异议"];
+  const exampleReply =
+    standardReplies[session?.goal] ||
+    standardReplies[normalizeGoalName(session?.goal)] ||
+    standardReplies["价格异议"];
 
   useEffect(() => {
     playerRef.current = new AudioPlayer();
