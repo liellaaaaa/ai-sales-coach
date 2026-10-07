@@ -7,14 +7,19 @@ from fastapi.staticfiles import StaticFiles
 
 from app.db.session import Base, SessionLocal, engine
 from app.db.migrations import ensure_runtime_schema
+from app.config import validate_settings
 from app.routers import auth, dashboard, knowledge, settings, training, voice
 from app.seed_kb import seed_kb_from_folder
 from app.services.llm_config import get_effective_llm_config
+from app.services.report_details import backfill_normalized_tables
 from app.services.voice import VoiceClient
 
 
 Base.metadata.create_all(bind=engine)
 ensure_runtime_schema()
+
+for _warning in validate_settings():
+    print(f"[config] {_warning}")
 
 # Auto-import kb/ folder on first startup
 try:
@@ -22,6 +27,9 @@ try:
     _count = seed_kb_from_folder(_db)
     if _count:
         print(f"seed_kb: imported {_count} documents from kb/ folder")
+    _backfill = backfill_normalized_tables(_db)
+    if _backfill["documents"] or _backfill["reports"]:
+        print(f"backfill: tags={_backfill['documents']} reports={_backfill['reports']}")
 finally:
     _db.close()
 

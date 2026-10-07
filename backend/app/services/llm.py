@@ -8,8 +8,23 @@ import httpx
 
 from app.models import KnowledgeItem, TrainingMessage, TrainingSession
 from app.services.llm_config import EffectiveLLMConfig, get_effective_llm_config
+from app.services.llm_providers import (
+    _anthropic_messages,
+    _openai_messages,
+    _post_json,
+    _strip_thinking,
+    resolve_provider,
+)
+from app.services.scoring import (
+    build_score_formula_text,
+    build_scoring_criteria_text,
+    calculate_overall_score,
+    normalize_score_item,
+)
 
 logger = logging.getLogger(__name__)
+
+__all__ = ["LLMClient", "extract_speaker", "SPEAKER_PATTERN", "_strip_thinking"]
 
 # ---------------------------------------------------------------------------
 # 角色标签解析：客户回复开头 [buyer] [tech] [boss] 或 [采购] [技术] [老板/厂长]
@@ -77,16 +92,6 @@ class _DictObj:
             return self._d[name]
         except KeyError:
             raise AttributeError(name)
-
-
-def _strip_thinking(text: str) -> str:
-    stripped = (text or "").strip()
-    while stripped.startswith("<think>"):
-        end = stripped.find("</think>")
-        if end == -1:
-            return stripped
-        stripped = stripped[end + len("</think>") :].strip()
-    return stripped
 
 
 def _excerpt(text: str, limit: int = 700) -> str:
@@ -429,6 +434,7 @@ class LLMClient:
         
         # 构建详细的评分标准
         scoring_criteria = self._build_scoring_criteria(session, sales_turns, avg_sales_length)
+        score_formula = build_score_formula_text()
         cards_text = _product_cards_text(session, knowledge)
         cards_block = f"\n产品卡（选型/边界/价值参考）：\n{cards_text}\n" if cards_text else ""
 
@@ -446,14 +452,7 @@ class LLMClient:
             "## 评分标准（必须严格遵循）\n"
             f"{scoring_criteria}\n\n"
             "## 评分计算规则\n"
-            "1. overall_score = (工艺探询×0.15 + 产品选型×0.15 + 技术边界×0.15 + 异议处理×0.15 + 故障归因×0.10 + 价值合规×0.15 + 推进动作×0.15) × 20\n"
-            "2. 每个维度必须基于对话中的具体表现评分，不能使用固定分数\n"
-            "3. 如果对话轮次少于3轮，整体评分不得超过70分\n"
-            "4. 若业务员未问清水质、水温、使用工艺（浸轧/浸渍/喷淋）中的任意两项，工艺探询不得超过2分\n"
-            "5. 若推荐型号明显不匹配客户已知条件（如水质差/水温高却只推 833 而非高稳 831B/868），产品选型不得超过2分\n"
-            "6. 若对涂料/化纤难提升、大货小样差异、同浴沉淀风险等技术边界有瞎承诺，技术边界不得超过2分\n"
-            "7. 如果没有明确的下一步动作（试样、小样条件、工程师介入、明确人/时间/条件），推进动作不得超过2分\n"
-            "8. 如果没有引用知识库内容，价值合规或产品选型不得满分\n\n"
+            f"{score_formula}\n\n"
             f"训练类型：{session.training_type}\n客户：{session.customer_name} / {session.customer_type}\n"
             f"阶段：{session.stage}\n目标：{session.goal}\n背景：{session.background}\n"
             f"知识库：\n{_knowledge_text(knowledge)}\n"
@@ -486,79 +485,13 @@ class LLMClient:
         sales_turns: int,
         avg_sales_length: float,
     ) -> str:
-        """构建纺织助剂行业评分标准，基于对话统计和训练目标"""
-        criteria = []
-
-        # 工艺探询维度
-        criteria.append("### 工艺探询（权重15%）——望闻问切四要素：水质、水温、使用工艺（浸轧/浸渍/喷淋）、布种；测试标准（日标/国标）为加分探询项")
-        criteria.append("- 5分：系统问清望闻问切四要素（水质/水温/工艺/布种），并确认测试标准后收敛推荐")
-        criteria.append("- 4分：问清望闻问切中三项，但遗漏布种或测试标准")
-        criteria.append("- 3分：问了部分条件，但水质/水温/工艺中仍有两项以上未确认")
-        criteria.append("- 2分：几乎只报型号不问条件，或问了但不跟进确认")
-        criteria.append("- 1分：完全未做工艺条件探询就直接推产品")
-
-        # 产品选型维度
-        criteria.append("\n### 产品选型（权重15%）——推荐型号是否匹配客户条件（如水质差/水温高应推高稳 831B/868 而非只推 833）")
-        criteria.append("- 5分：型号与水质/水温/布种/工艺高度匹配，并说明为何选这款而非竞品款")
-        criteria.append("- 4分：选型基本匹配，但未说明取舍理由或备选方案")
-        criteria.append("- 3分：推了通用款，未针对已知条件（硬水/高温/涂料布）做差异化")
-        criteria.append("- 2分：型号与已知条件明显不匹配（如高温高硬仍只推 833）")
-        criteria.append("- 1分：乱推型号，或推了与场景无关的产品")
-
-        # 技术边界维度
-        criteria.append("\n### 技术边界（权重15%）——是否诚实说明局限（涂料/化纤难提升、大货小样差异、同浴沉淀风险），不瞎承诺")
-        criteria.append("- 5分：主动说明技术边界与风险，并给出可控条件（分浴、补加、测试口径）")
-        criteria.append("- 4分：说明了主要边界，但个别风险未点透")
-        criteria.append("- 3分：提到局限但含糊，或只在被追问后才承认")
-        criteria.append("- 2分：对涂料/化纤提升、大货小样差异、同浴等问题有夸大或含糊承诺")
-        criteria.append("- 1分：满口保证绝无问题，明显瞎承诺")
-
-        # 异议处理维度
-        criteria.append("\n### 异议处理（权重15%）——能否用参数/案例/测试标准回应，而非空话")
-        criteria.append("- 5分：用具体参数、测试标准（日标/国标/湿摩擦级数）、案例或数据回应异议")
-        criteria.append("- 4分：有依据地回应，但证据不够贴合客户场景")
-        criteria.append("- 3分：尝试回应，但以安抚话术为主，缺硬证据")
-        criteria.append("- 2分：回避异议或空泛保证「没问题」")
-        criteria.append("- 1分：完全没有处理客户异议")
-
-        # 故障归因维度
-        criteria.append("\n### 故障归因（权重10%）——出现客诉/斑/色变/气味时是否先归因（水质、残留、同浴、温度）再认赔")
-        criteria.append("- 5分：先按水质/残留/同浴/温度/工艺窗口系统归因，再定责与整改方案")
-        criteria.append("- 4分：做了归因但漏掉 1 个关键变量（如未查水硬度或残留）")
-        criteria.append("- 3分：提到可能原因但未排查路径，过早给补偿口径")
-        criteria.append("- 2分：跳过归因直接道歉认赔，或甩锅客户")
-        criteria.append("- 1分：完全没有故障分析意识")
-
-        # 价值合规维度
-        criteria.append("\n### 价值合规（权重15%）——是否表达认证（bluesign/GOTS/OEKO-TEX/ZDHC）、省水省时、稳定性价值，而不是只谈降价")
-        criteria.append("- 5分：结合认证、省水省时、批次稳定/返工风险下降等价值，并与客户痛点挂钩")
-        criteria.append("- 4分：表达了合规或效率价值，但与客户账算得不够细")
-        criteria.append("- 3分：价值表达偏泛，或只谈一点价格")
-        criteria.append("- 2分：几乎只谈降价/折扣，无合规与效率价值")
-        criteria.append("- 1分：完全没有价值表达，或违反合规口径乱承诺证书")
-
-        # 推进动作维度
-        criteria.append("\n### 推进动作（权重15%）——是否推进到试样、小样条件、工程师介入、明确下一步人/时间/条件")
-        criteria.append("- 5分：推进到试样/小样条件确认，明确工程师介入与下一步人、时间、条件")
-        criteria.append("- 4分：有明确下一步，但缺少责任人或具体小样条件")
-        criteria.append("- 3分：提出下一步但不够具体（如「再联系」）")
-        criteria.append("- 2分：下一步动作模糊或不可执行")
-        criteria.append("- 1分：完全没有推进动作")
-
-        # 添加对话统计信息
-        criteria.append(f"\n## 本次对话统计")
-        criteria.append(f"- 业务员轮次：{sales_turns}轮")
-        criteria.append(f"- 平均回复长度：{avg_sales_length:.0f}字")
-        criteria.append(f"- 训练目标：{session.goal}")
-        criteria.append(f"- 商机阶段：{session.stage}")
-
-        # 根据对话轮次调整评分要求
-        if sales_turns < 3:
-            criteria.append("\n## 特殊评分要求")
-            criteria.append("- 对话轮次不足3轮，整体评分不得超过70分")
-            criteria.append("- 需要在summary中说明对话轮次不足的影响")
-
-        return "\n".join(criteria)
+        """评分标准文案来自 scoring 模块（与权重同源）。"""
+        return build_scoring_criteria_text(
+            sales_turns=sales_turns,
+            avg_sales_length=avg_sales_length,
+            goal=session.goal,
+            stage=session.stage,
+        )
 
     def _configured(self, config: EffectiveLLMConfig) -> bool:
         return config.configured
@@ -581,170 +514,25 @@ class LLMClient:
             return {"ok": False, "message": "模型无有效返回", "model_id": config.model_id, "latency_ms": latency_ms}
         return {"ok": True, "message": "模型连接成功", "model_id": config.model_id, "latency_ms": latency_ms}
 
+    def _provider(self, config: EffectiveLLMConfig):
+        return resolve_provider(config.base_url, config.group_id)
+
     async def _chat(self, messages: list[dict], config: EffectiveLLMConfig, max_tokens: int = 1024) -> str:
-        if config.base_url:
-            if "anthropic" in config.base_url.lower():
-                return await self._chat_anthropic_compatible(messages, config, max_tokens)
-            return await self._chat_openai_compatible(messages, config, max_tokens)
-        return await self._chat_legacy(messages, config, max_tokens)
-
-    async def _chat_anthropic_compatible(self, messages: list[dict], config: EffectiveLLMConfig, max_tokens: int) -> str:
-        base_url = config.base_url.rstrip("/")
-        url = base_url if base_url.endswith("/messages") else f"{base_url}/v1/messages"
-        system, chat_messages = self._anthropic_messages(messages)
-        payload = {
-            "model": config.model_id,
-            "max_tokens": max_tokens,
-            "messages": chat_messages,
-        }
-        if system:
-            payload["system"] = system
-        headers = {
-            "x-api-key": config.api_key,
-            "anthropic-version": "2023-06-01",
-            "Content-Type": "application/json",
-        }
-        body = await self._post_json(url, payload, headers)
-        content = body.get("content") or []
-        if isinstance(content, str):
-            return content
-        return "".join(part.get("text", "") for part in content if isinstance(part, dict))
-
-    async def _chat_openai_compatible(self, messages: list[dict], config: EffectiveLLMConfig, max_tokens: int) -> str:
-        base_url = config.base_url.rstrip("/")
-        url = base_url if base_url.endswith("/chat/completions") else f"{base_url}/chat/completions"
-        payload = {"model": config.model_id, "messages": self._openai_messages(messages), "max_tokens": max_tokens}
-        headers = {"Authorization": f"Bearer {config.api_key}", "Content-Type": "application/json"}
-        body = await self._post_json(url, payload, headers)
-        choices = body.get("choices") or []
-        if not choices:
-            return ""
-        choice = choices[0]
-        message = choice.get("message") or {}
-        content = _strip_thinking(message.get("content") or choice.get("text") or "")
-        if choice.get("finish_reason") == "length":
-            logger.warning("LLM 输出达到 max_tokens 上限被截断 (model=%s, max_tokens=%s)", config.model_id, max_tokens)
-        return content
-
-    async def _chat_legacy(self, messages: list[dict], config: EffectiveLLMConfig, max_tokens: int) -> str:
-        url = f"https://api.minimax.chat/v1/text/chatcompletion_v2?GroupId={config.group_id}"
-        payload = {"model": config.model_id, "messages": messages, "tokens_to_generate": max_tokens}
-        headers = {"Authorization": f"Bearer {config.api_key}", "Content-Type": "application/json"}
-        body = await self._post_json(url, payload, headers)
-        choices = body.get("choices") or []
-        if not choices:
-            return ""
-        message = choices[0].get("message") or {}
-        return message.get("content") or message.get("text") or ""
+        provider = self._provider(config)
+        return await provider.chat(messages, config.model_id, config.api_key, max_tokens)
 
     async def _chat_stream(
         self, messages: list[dict], config: EffectiveLLMConfig, max_tokens: int = 1024
     ) -> AsyncGenerator[str, None]:
-        if config.base_url:
-            if "anthropic" in config.base_url.lower():
-                async for chunk in self._chat_stream_anthropic_compatible(messages, config, max_tokens):
-                    yield chunk
-            else:
-                async for chunk in self._chat_stream_openai_compatible(messages, config, max_tokens):
-                    yield chunk
-        else:
-            result = await self._chat_legacy(messages, config, max_tokens)
-            if result:
-                yield result
-
-    async def _chat_stream_openai_compatible(
-        self, messages: list[dict], config: EffectiveLLMConfig, max_tokens: int
-    ) -> AsyncGenerator[str, None]:
-        base_url = config.base_url.rstrip("/")
-        url = base_url if base_url.endswith("/chat/completions") else f"{base_url}/chat/completions"
-        payload = {
-            "model": config.model_id,
-            "messages": self._openai_messages(messages),
-            "max_tokens": max_tokens,
-            "stream": True,
-        }
-        headers = {"Authorization": f"Bearer {config.api_key}", "Content-Type": "application/json"}
-        async with httpx.AsyncClient(timeout=httpx.Timeout(90.0, connect=15.0)) as client:
-            async with client.stream("POST", url, json=payload, headers=headers) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    data = line[6:]
-                    if data.strip() == "[DONE]":
-                        break
-                    try:
-                        obj = json.loads(data)
-                        choices = obj.get("choices") or []
-                        if choices:
-                            delta = choices[0].get("delta") or {}
-                            content = delta.get("content")
-                            if content:
-                                yield content
-                    except (json.JSONDecodeError, KeyError, IndexError):
-                        continue
-
-    async def _chat_stream_anthropic_compatible(
-        self, messages: list[dict], config: EffectiveLLMConfig, max_tokens: int
-    ) -> AsyncGenerator[str, None]:
-        base_url = config.base_url.rstrip("/")
-        url = base_url if base_url.endswith("/messages") else f"{base_url}/v1/messages"
-        system, chat_messages = self._anthropic_messages(messages)
-        payload = {
-            "model": config.model_id,
-            "max_tokens": max_tokens,
-            "messages": chat_messages,
-            "stream": True,
-        }
-        if system:
-            payload["system"] = system
-        headers = {
-            "x-api-key": config.api_key,
-            "anthropic-version": "2023-06-01",
-            "Content-Type": "application/json",
-        }
-        async with httpx.AsyncClient(timeout=httpx.Timeout(90.0, connect=15.0)) as client:
-            async with client.stream("POST", url, json=payload, headers=headers) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    try:
-                        obj = json.loads(line[6:])
-                        if obj.get("type") == "content_block_delta":
-                            delta = obj.get("delta") or {}
-                            text = delta.get("text")
-                            if text:
-                                yield text
-                    except (json.JSONDecodeError, KeyError):
-                        continue
+        provider = self._provider(config)
+        async for chunk in provider.chat_stream(messages, config.model_id, config.api_key, max_tokens):
+            yield chunk
 
     def _openai_messages(self, messages: list[dict]) -> list[dict]:
-        converted = []
-        for index, message in enumerate(messages):
-            sender = message.get("sender_type")
-            role = "assistant" if sender == "BOT" else "user"
-            if sender == "SYSTEM" or (index == 0 and sender == "BOT"):
-                role = "system"
-            converted.append({"role": role, "content": message.get("text", "")})
-        if converted and not any(message["role"] == "user" for message in converted):
-            converted.append({"role": "user", "content": "请开始本次训练。"})
-        return converted
+        return _openai_messages(messages)
 
     def _anthropic_messages(self, messages: list[dict]) -> tuple[str, list[dict]]:
-        system_parts = []
-        converted = []
-        for index, message in enumerate(messages):
-            sender = message.get("sender_type")
-            text = message.get("text", "")
-            if sender == "SYSTEM" or (index == 0 and sender == "BOT"):
-                system_parts.append(text)
-                continue
-            role = "assistant" if sender == "BOT" else "user"
-            converted.append({"role": role, "content": text})
-        if not converted:
-            converted.append({"role": "user", "content": "请开始。"})
-        return "\n".join(system_parts), converted
+        return _anthropic_messages(messages)
 
     def _json_text(self, text: str) -> str:
         stripped = text.strip()
@@ -777,18 +565,6 @@ class LLMClient:
             "summary": self._text(data.get("summary"), fallback.get("summary", "已完成文档预分析。")),
             "llm_status": "llm",
         }
-
-    async def _post_json(self, url: str, payload: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
-        last_error = None
-        async with httpx.AsyncClient(timeout=httpx.Timeout(90.0, connect=15.0)) as client:
-            for _ in range(2):
-                try:
-                    response = await client.post(url, json=payload, headers=headers)
-                    response.raise_for_status()
-                    return response.json()
-                except httpx.HTTPError as exc:
-                    last_error = exc
-        raise last_error or httpx.HTTPError("LLM request failed")
 
     def _normalize_report(
         self,
@@ -840,49 +616,14 @@ class LLMClient:
         scores: list[dict[str, Any]],
         session: TrainingSession,
     ) -> int:
-        """根据权重规则计算总分"""
-        if not scores or len(scores) < 7:
-            return 70
-        
-        # 权重配置（纺织助剂行业七维）
-        weights = {
-            "工艺探询": 0.15,
-            "产品选型": 0.15,
-            "技术边界": 0.15,
-            "异议处理": 0.15,
-            "故障归因": 0.10,
-            "价值合规": 0.15,
-            "推进动作": 0.15,
-        }
-        
-        weighted_sum = 0
-        total_weight = 0
-        
-        for score_item in scores:
-            name = score_item.get("name", "")
-            value = score_item.get("value", 3)
-            weight = weights.get(name, 0.15)
-            weighted_sum += value * weight
-            total_weight += weight
-        
-        # 计算加权平均分（满分5分）
-        if total_weight > 0:
-            avg_score = weighted_sum / total_weight
-        else:
-            avg_score = 3.0
-        
-        # 转换为100分制
-        overall_score = int(avg_score * 20)
-
-        # 对话轮次不足时整体封顶（与 prompt 硬约束一致）
+        """总分由 scoring 模块统一计算（与 prompt 权重同源）。"""
         try:
-            sales_turns = len([m for m in (getattr(session, "messages", None) or []) if getattr(m, "role", "") == "sales"])
+            sales_turns = len(
+                [m for m in (getattr(session, "messages", None) or []) if getattr(m, "role", "") == "sales"]
+            )
         except Exception:
             sales_turns = 3
-        if sales_turns < 3:
-            overall_score = min(overall_score, 70)
-
-        return max(0, min(100, overall_score))
+        return calculate_overall_score(scores, sales_turns=sales_turns)
 
     def _normalize_opportunity_report(
         self,
@@ -937,26 +678,7 @@ class LLMClient:
         }
 
     def _score_item(self, item: Any, fallback: dict[str, Any]) -> dict[str, Any]:
-        if not isinstance(item, dict):
-            return fallback
-        # 白名单校验维度名，防止 LLM 回传旧维（SOP执行/价值表达等）混入
-        allowed = {
-            "工艺探询",
-            "产品选型",
-            "技术边界",
-            "异议处理",
-            "故障归因",
-            "价值合规",
-            "推进动作",
-        }
-        name = self._text(item.get("name"), "")
-        if name not in allowed:
-            name = fallback.get("name", "工艺探询")
-        return {
-            "name": name,
-            "value": self._score_value(item.get("value"), fallback["value"], 5),
-            "reason": self._text(item.get("reason"), fallback["reason"]),
-        }
+        return normalize_score_item(item, fallback)
 
     def _citation_item(self, item: Any, source: str, reason: str) -> dict[str, str]:
         if not isinstance(item, dict):
