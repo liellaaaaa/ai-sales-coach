@@ -154,8 +154,8 @@ async def suggest_reply(
     session = _require_session(db, user, session_id)
     if session.status == "completed":
         raise HTTPException(status_code=400, detail="训练已完成")
-    content = await service.suggest_reply(db, session)
-    return SuggestionOut(content=content)
+    result = await service.suggest_reply(db, session)
+    return SuggestionOut(content=result.get("content", ""), source=result.get("source", ""))
 
 
 @router.post("/sessions/{session_id}/live-tip", response_model=LiveTipOut)

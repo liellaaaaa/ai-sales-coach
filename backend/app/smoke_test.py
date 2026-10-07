@@ -600,6 +600,20 @@ def run():
     tips = live_tip.json().get("tips") or []
     assert 1 <= len(tips) <= 2, tips
     assert all(isinstance(t, str) and t.strip() for t in tips), tips
+
+    suggestion = client.post(
+        f"/api/training/sessions/{session['id']}/suggestion",
+        headers=sales_headers,
+    )
+    assert suggestion.status_code == 200, suggestion.text
+    suggestion_body = suggestion.json()
+    assert suggestion_body["content"].strip(), suggestion_body
+    assert isinstance(suggestion_body.get("source", ""), str), suggestion_body
+    assert isinstance(suggestion_body.get("notice", ""), str), suggestion_body
+    # mock 模式 fallback 必须贴知识库 recommended，而不是通用套话
+    assert "我理解您的顾虑" not in suggestion_body["content"], suggestion_body
+    assert any(kw in suggestion_body["content"] for kw in ["总成本", "价格", "返修", "稳定性", "下一步"]), suggestion_body
+
     report = finish_session(client, sales_headers, session["id"])
     assert "supervisor_comment" not in report
     assert any(item.get("source") for item in report["citations"])

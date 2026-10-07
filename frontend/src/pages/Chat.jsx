@@ -507,6 +507,7 @@ export default function Chat({ session, restoring, onSession, onReport, onError,
                 ) : (
                   <>
                     <p>{suggestion?.content || exampleReply}</p>
+                    {suggestion?.source ? <small className="suggestion-source">{suggestion.source}</small> : null}
                     <small>{suggestion?.notice || "AI 推荐回复仅用于训练参考，并不完全适用于实际业务场景。"}</small>
                   </>
                 )}

@@ -182,6 +182,7 @@ class VoiceSpeechIn(BaseModel):
 class SuggestionOut(BaseModel):
     content: str
     notice: str = "AI 推荐回复仅用于训练参考，并不完全适用于实际业务场景。"
+    source: str = ""
 
 
 class LiveTipIn(BaseModel):

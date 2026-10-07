@@ -53,13 +53,13 @@ GOAL_CHUNK_HINTS = {
     "条件收口": {"商机推进规范", "推荐话术", "禁用话术", "关键动作"},
     "条件谈判": {"商机推进规范", "推荐话术", "禁用话术", "关键动作"},
     "商务谈判": {"商机推进规范", "推荐话术", "禁用话术", "关键动作"},
-    "方案讲解": {"产品参数", "工艺条件", "技术边界", "应用场景", "常见问题"},
-    "技术交涉": {"产品参数", "工艺条件", "技术边界", "应用场景", "常见问题"},
-    "方案论证": {"产品参数", "工艺条件", "技术边界", "应用场景", "价值表达"},
-    "报告讲解": {"产品参数", "工艺条件", "价值表达", "常见问题"},
-    "试样推进": {"工艺条件", "使用方法", "注意事项", "关键动作"},
-    "异议应对": {"产品参数", "工艺条件", "常见问题", "异议处理", "风险提醒"},
-    "技术质疑": {"产品参数", "工艺条件", "常见问题", "异议处理", "风险提醒"},
+    "方案讲解": {"产品参数", "工艺条件", "技术边界", "应用场景", "常见问题", "推荐话术", "禁用话术"},
+    "技术交涉": {"产品参数", "工艺条件", "技术边界", "应用场景", "常见问题", "推荐话术", "禁用话术"},
+    "方案论证": {"产品参数", "工艺条件", "技术边界", "应用场景", "价值表达", "推荐话术", "禁用话术"},
+    "报告讲解": {"产品参数", "工艺条件", "价值表达", "常见问题", "推荐话术", "禁用话术"},
+    "试样推进": {"工艺条件", "使用方法", "注意事项", "关键动作", "推荐话术", "禁用话术"},
+    "异议应对": {"产品参数", "工艺条件", "常见问题", "异议处理", "风险提醒", "推荐话术", "禁用话术"},
+    "技术质疑": {"产品参数", "工艺条件", "常见问题", "异议处理", "风险提醒", "推荐话术", "禁用话术"},
     "回款交涉": {"商机推进规范", "推荐话术", "禁用话术", "风险提醒"},
     "关系维护": {"客户交涉案例", "推荐话术", "风险提醒", "关键动作"},
     "老客维护": {"客户交涉案例", "推荐话术", "风险提醒", "关键动作"},
@@ -68,7 +68,7 @@ GOAL_CHUNK_HINTS = {
     "首次触达": {"推荐话术", "关键动作", "客户交涉案例", "风险提醒"},
     "约到拜访": {"推荐话术", "关键动作", "商机推进规范"},
     "线索判断": {"关键动作", "商机推进规范", "风险提醒"},
-    "需求澄清": {"关键动作", "产品参数", "工艺条件", "应用场景"},
+    "需求澄清": {"关键动作", "产品参数", "工艺条件", "应用场景", "推荐话术", "禁用话术"},
     "取得样品": {"关键动作", "使用方法", "注意事项"},
     "再次推进": {"商机推进规范", "关键动作", "推荐话术"},
     "合同签订": {"商机推进规范", "关键动作", "风险提醒"},
@@ -77,7 +77,12 @@ GOAL_CHUNK_HINTS = {
 }
 
 
-def find_relevant_knowledge(db: Session, session: TrainingSession, limit: int = 4) -> list[KnowledgeItem]:
+# 话术类 chunk：goal 匹配时额外加分，保证推荐/禁用/异议处理优先进入 prompt
+_PRIORITY_CHUNK_TYPES = {"推荐话术", "禁用话术", "异议处理"}
+_PRIORITY_CHUNK_BONUS = 3
+
+
+def find_relevant_knowledge(db: Session, session: TrainingSession, limit: int = 6) -> list[KnowledgeItem]:
     items = (
         db.query(KnowledgeItem)
         .filter(KnowledgeItem.status == "active")
@@ -148,7 +153,8 @@ def _knowledge_score(item: KnowledgeItem, session: TrainingSession) -> int:
         score += 8
     elif item_stage in GENERIC_VALUES:
         score += 1
-    if _goal_scenario_match(item_scenario, session_goal):
+    goal_matched = _goal_scenario_match(item_scenario, session_goal)
+    if goal_matched:
         score += 8
     elif item_scenario in GENERIC_VALUES:
         score += 1
@@ -160,6 +166,9 @@ def _knowledge_score(item: KnowledgeItem, session: TrainingSession) -> int:
     chunk_hints = _chunk_hints(session_goal, session_stage)
     if item.chunk_type in chunk_hints:
         score += 6
+    # goal 命中时，推荐话术/禁用话术/异议处理优先（出题与复盘都要引用口径）
+    if goal_matched and item.chunk_type in _PRIORITY_CHUNK_TYPES:
+        score += _PRIORITY_CHUNK_BONUS
 
     haystack = " ".join(
         [

@@ -19,6 +19,7 @@ from app.services.scoring import (
     build_score_formula_text,
     build_scoring_criteria_text,
     calculate_overall_score,
+    enforce_hard_caps,
     normalize_score_item,
 )
 
@@ -94,11 +95,12 @@ class _DictObj:
             raise AttributeError(name)
 
 
-def _excerpt(text: str, limit: int = 700) -> str:
+def _excerpt(text: str, limit: int = 1200) -> str:
     return " ".join((text or "").split())[:limit]
 
 
 def _knowledge_text(items: list[KnowledgeItem]) -> str:
+    """知识库注入文本：recommended/banned 保留全文，仅截断 content。"""
     lines = []
     for item in items:
         location = item.section_title or "未标注章节"
@@ -106,11 +108,13 @@ def _knowledge_text(items: list[KnowledgeItem]) -> str:
             location = f"{location} / 第 {item.page_start}-{item.page_end} 页"
         elif item.page_start:
             location = f"{location} / 第 {item.page_start} 页"
+        recommended = " ".join((item.recommended or "").split())
+        banned = " ".join((item.banned or "").split())
         lines.append(
             "- "
             f"source:{item.source_name}; doc_type:{item.source_type}; chunk_type:{item.chunk_type}; "
             f"section:{location}; confidence:{item.confidence}; stage:{item.stage}; scenario:{item.scenario}; "
-            f"recommended:{item.recommended}; banned:{item.banned}; content:{_excerpt(item.content)}"
+            f"recommended:{recommended}; banned:{banned}; content:{_excerpt(item.content)}"
         )
     return "\n".join(lines)
 
@@ -173,6 +177,10 @@ class LLMClient:
             "可以在台词里自然带入场感，如 [tech]我插一句…、[boss]这个我定一下…。\n\n"
             "# 出题契约（必须遵守）\n"
             "1. 必须从下方产品与工艺资料中的产品型号、参数、工艺条件、技术边界、常见故障里，挑 1–2 个具体点追问或质疑，不要空泛聊天。\n"
+            "   追问优先来自知识/产品卡中的技术边界、常见故障、认证与测试标准："
+            "技术边界（涂料/化纤难提升、大货小样差异、同浴沉淀、适用 pH/温度窗口）、"
+            "常见故障（色变、沾色、破乳、湿擦掉级、气味）、"
+            "认证与测试标准（bluesign/GOTS/OEKO-TEX/ZDHC，日标/国标/湿摩擦级数怎么测）。\n"
             "2. 追问风格参考（口语、具体，照着这种味道说）：\n"
             "   - [tech]你们湿擦跟固色剂能不能同浴？\n"
             "   - [buyer]我们水硬度高、夏天水温五六十度，用哪一款？\n"
@@ -180,11 +188,16 @@ class LLMClient:
             "   - [tech]日标还是国标测的？标准都不一样\n"
             "   - [tech]涂料/化纤是不是根本提不上来？\n"
             "   - [tech]HT-790 真不含双酚？残留多少？\n"
+            "   - [tech]你们过的是 OEKO-TEX 还是 ZDHC？报告拿来看\n"
             "   - [boss]你先给个诚意价。\n"
             "3. 业务员若不问清水质、水温、使用工艺（浸轧/浸渍/喷淋）、布种、测试标准，就不要给完整信息：可以不耐烦、反问、或只给部分条件。\n"
             "4. 不要编造资料里没有的产品事实；资料里没有的信息就说「不清楚/要问技术」。\n"
-            "5. 可以压价、施压，但必须挂在具体产品/工艺点上（某型号效果、某工艺风险、某测试标准），不要空泛说「太贵了」。\n"
-            "6. 不要向业务员背诵资料原文，不要报来源、不要念参数表。\n\n"
+            "5. 可以压价、施压，但必须挂在具体产品/工艺点上（某型号效果、某工艺风险、某测试标准），不要空泛说「太贵了」。"
+            "涉及价格/账期/交期时，可结合资料里 recommended/banned 的商务口径施压："
+            "拿推荐口径里的价值点反向压条件（既然省水省时/认证过硬，价格就该更优），"
+            "或用禁用口径里的风险点施压（大货不稳、返修、停线谁担），不要站到业务员立场替对方圆场。\n"
+            "6. 不要向业务员背诵资料原文，不要报来源、不要念参数表。\n"
+            "7. 你是客户，不是业务员：不要替对方总结卖点、不要主动帮业务员推进成交、不要给出可直接照念的成单话术。\n\n"
             "# 客户画像\n"
             f"{_customer_profile_text(session)}\n"
             "注意：客户关系只表示是否有合作，不代表价格态度；陌拜新客户也可能专业、关注品质或工艺，不一定是价格敏感。\n"
@@ -278,22 +291,29 @@ class LLMClient:
         session: TrainingSession,
         messages: list[TrainingMessage],
         knowledge: list[KnowledgeItem],
-    ) -> str:
+    ) -> dict[str, str]:
+        """返回 {"content": 可直接说的口语回复, "source": 可选依据}。知识库优先。"""
         last_customer = next((msg.content for msg in reversed(messages) if msg.role == "customer"), "")
-        fallback = (
-            "我理解您的顾虑。为了避免只停留在口头沟通，我建议我们先确认关键条件、责任人和下一次沟通时间，"
-            "再根据测试结果或商务边界推进下一步。"
-        )
         config = get_effective_llm_config()
         if not self._configured(config):
-            return fallback
+            return self._fallback_suggested_reply(session, knowledge)
         transcript = "\n".join(f"{m.role}: {m.content}" for m in messages[-8:])
         cards_text = _product_cards_text(session, knowledge)
-        cards_block = f"\n产品卡：\n{cards_text}" if cards_text else ""
+        cards_block = f"\n产品卡（型号与边界必须对齐）：\n{cards_text}" if cards_text else ""
         prompt = (
-            "你是销售话术教练。请根据当前训练上下文，给业务员生成一条可参考的下一句回复。"
-            "要求：只输出一句自然口语化回复，不要解释，不要编号；必须回应客户刚才的问题，并推动一个明确下一步。"
-            "不要承诺无法确认的数据，不要直接降价，不要说空泛的保持沟通。控制在 80 字以内。\n"
+            "# 角色\n"
+            "你是纺织助剂销售话术教练。请给业务员一条可直接说出口的下一句回复。\n\n"
+            "# 知识库优先话术契约（必须遵守）\n"
+            "1. 必须优先改写下方知识条目里的 recommended 推荐话术，把它变成对客户说的自然口语；"
+            "绝对禁止使用 banned 禁用话术，也不要输出与其冲突的说法。\n"
+            "2. 必须回应客户最后一句的具体点（型号 / 工艺 / 价格 / 交期 / 测试标准等），不要答非所问。\n"
+            "3. 若有产品卡：提到的型号、参数、技术边界必须与产品卡和知识库对齐，不得编造资料外型号或数据。\n"
+            "4. 禁止空泛话术：不要说「保持沟通」「没问题」「尽量满足您」这类不落地的话，必须落到具体条件或下一步动作。\n"
+            "5. 不要承诺无法确认的数据，不要直接降价。\n\n"
+            "# 输出格式（必须遵守）\n"
+            "第 1 行：1 句可直接说出口的口语回复，不超过 80 字，不要引号、不要编号、不要解释。\n"
+            "第 2 行（可选）：依据：<一句话说明改写自哪条知识/产品点，不超过 30 字>\n"
+            "不要输出其它内容。\n\n"
             f"客户最后一句：{last_customer}\n"
             f"训练类型：{session.training_type}\n阶段：{session.stage}\n目标：{session.goal}\n"
             f"客户：{session.customer_name} / {session.customer_type}\n背景：{session.background}\n"
@@ -304,12 +324,88 @@ class LLMClient:
         try:
             data = await self._chat([{"sender_type": "USER", "text": prompt}], config, max_tokens=1024)
         except httpx.HTTPError:
-            return fallback
-        return data.strip().strip('"“”') or fallback
+            return self._fallback_suggested_reply(session, knowledge)
+        parsed = self._parse_suggested_reply(data)
+        if not parsed.get("content"):
+            return self._fallback_suggested_reply(session, knowledge)
+        return parsed
+
+    def _parse_suggested_reply(self, text: str) -> dict[str, str]:
+        raw = _strip_thinking(text or "").strip()
+        if raw.startswith("```"):
+            raw = raw.removeprefix("```json").removeprefix("```").strip()
+            raw = raw.removesuffix("```").strip()
+        raw = raw.strip().strip('"“”')
+        content = ""
+        source = ""
+        for line in raw.splitlines():
+            cleaned = line.strip().strip('"“”')
+            if not cleaned:
+                continue
+            if re.match(r"^(依据|理由|出处|参考)\s*[：:]", cleaned):
+                source = re.sub(r"^(依据|理由|出处|参考)\s*[：:]\s*", "依据：", cleaned)
+                continue
+            if not content:
+                content = cleaned
+        if content and not source:
+            match = re.search(r"[（(]\s*(依据|理由)\s*[：:]\s*([^）)]+)[）)]\s*$", content)
+            if match:
+                source = f"依据：{match.group(2).strip()}"
+                content = content[: match.start()].strip()
+        return {"content": content.strip(), "source": source.strip()}
+
+    def _fallback_suggested_reply(
+        self,
+        session: TrainingSession,
+        knowledge: list[KnowledgeItem] | None,
+    ) -> dict[str, str]:
+        """LLM 不可用时：优先用知识条目 recommended 拼 1-2 句可说回复，不再给通用套话。"""
+        speakable: list[str] = []
+        source = ""
+        for item in knowledge or []:
+            rec = (getattr(item, "recommended", "") or "").strip()
+            if not rec:
+                continue
+            line = self._recommended_to_speech(rec)
+            if line and line not in speakable:
+                speakable.append(line)
+            if not source:
+                name = getattr(item, "source_name", "") or getattr(item, "title", "") or "知识库"
+                source = f"依据：改写自《{name}》推荐话术"
+            if len(speakable) >= 2:
+                break
+        if not speakable:
+            goal = getattr(session, "goal", "") or ""
+            return {
+                "content": "您刚提到的这点我记下了，我先把关键条件和边界跟您对齐，再约时间把下一步定下来。",
+                "source": f"依据：围绕训练目标「{goal}」的通用推进动作" if goal else "",
+            }
+        content = speakable[0]
+        if len(speakable) > 1:
+            content = f"{speakable[0]}另外，{speakable[1]}"
+        goal = getattr(session, "goal", "") or ""
+        if goal and source:
+            source = f"{source}；目标：{goal}"
+        return {"content": content, "source": source}
+
+    def _recommended_to_speech(self, rec: str) -> str:
+        """把教练指令式 recommended 改写成对客可说的口语短句。"""
+        t = " ".join((rec or "").split()).strip().rstrip("。；;.!！")
+        if not t:
+            return ""
+        t = t.replace("客户", "您")
+        t = re.sub(r"^先", "我先", t)
+        t = re.sub(r"，再", "，然后我再", t, count=1)
+        t = re.sub(r"^再", "然后我再", t)
+        t = re.sub(r"^把", "我把", t)
+        t = re.sub(r"^用", "我用", t)
+        if not re.match(r"^(我|您|咱们|我们)", t):
+            t = f"我建议咱们{t}"
+        return f"{t}。"
 
     async def live_tip(self, session, messages, knowledge, context: str = "after_sales") -> list[str]:
         """返回 1-2 条短提示。基于最新对话，提醒工艺探询/选型风险/推进动作/禁用话术。"""
-        fallback = self._fallback_live_tips()
+        fallback = self._fallback_live_tips(knowledge)
         config = get_effective_llm_config()
         if not self._configured(config):
             return fallback
@@ -322,8 +418,46 @@ class LLMClient:
         tips = self._parse_live_tips(data)
         return tips or fallback
 
-    def _fallback_live_tips(self) -> list[str]:
-        return ["补问水质与水温", "把下一步收成具体人/时间"]
+    def _fallback_live_tips(self, knowledge: list[KnowledgeItem] | None = None) -> list[str]:
+        """无 LLM 时优先从知识条目 recommended/banned 提炼短提示。"""
+        tips: list[str] = []
+        for item in knowledge or []:
+            rec = (getattr(item, "recommended", "") or "").strip()
+            banned = (getattr(item, "banned", "") or "").strip()
+            if rec:
+                tip = self._short_tip_from(rec, banned=False)
+                if tip and tip not in tips:
+                    tips.append(tip)
+            if banned and len(tips) < 2:
+                tip = self._short_tip_from(banned, banned=True)
+                if tip and tip not in tips:
+                    tips.append(tip)
+            if len(tips) >= 2:
+                break
+        return tips[:2] or ["补问水质与水温", "把下一步收成具体人/时间"]
+
+    def _short_tip_from(self, text: str, *, banned: bool = False) -> str:
+        raw = " ".join((text or "").split()).strip()
+        if not raw:
+            return ""
+        parts = [p.strip() for p in re.split(r"[，。；;、,]", raw) if p.strip()]
+        if not parts:
+            return ""
+        if banned:
+            # 优先取禁止句，提炼成「勿…」
+            pick = next(
+                (p for p in parts if re.match(r"^(也?不要|别|不能|禁止|避免|忌|勿)", p)),
+                min(parts, key=len),
+            )
+            pick = re.sub(r"^(也?不要|别|不能|禁止|避免|忌|勿)\s*", "", pick)
+            tip = f"勿{pick}"
+        else:
+            pick = parts[0]
+            pick = re.sub(r"^(先|优先|建议)\s*", "", pick)
+            pick = re.sub(r"^(确认|问清|了解|说明|介绍)", r"先\1", pick)
+            tip = pick if pick.startswith("先") else f"先{pick}"
+        tip = tip.strip().strip("。；;.!！")
+        return tip[:20] if tip else ""
 
     def _msg_field(self, msg: Any, name: str, default: Any = "") -> Any:
         if isinstance(msg, dict):
@@ -357,10 +491,13 @@ class LLMClient:
             "你是纺织助剂销售陪练的旁路实时教练，场景是固色剂/湿摩擦提升剂/硅油等助剂。"
             f"当前时机：{moment}。请给业务员 1-2 条立刻可做的短提示。\n"
             "只输出 2 行以内，一行一条提示，每条不超过 20 个汉字，不要编号、不要解释、不要 JSON。\n"
-            "提示必须可直接照做，优先提醒：工艺探询（水质/水温/工艺/布种）、选型风险（高硬高温勿只推833）、"
+            "提示必须贴合下方知识库与当前对话：优先从知识条目 recommended 提炼「先…」动作提示，"
+            "从 banned 提炼「勿…」风险提示，不要给与知识无关的通用套话。\n"
+            "提示必须可直接照做，可覆盖：工艺探询（水质/水温/工艺/布种）、选型风险（高硬高温勿只推833）、"
             "技术边界（涂料化纤难提升、大货小样差异、同浴沉淀）、推进动作（收成具体人/时间/条件）、禁用话术（勿瞎承诺/勿空泛保证）。\n"
             f"训练：{getattr(session, 'training_type', '')} / {getattr(session, 'stage', '')} / {getattr(session, 'goal', '')}\n"
             f"客户：{getattr(session, 'customer_name', '')} / {getattr(session, 'customer_type', '')}\n"
+            f"知识库：\n{_knowledge_text(knowledge) if isinstance(knowledge, list) else ''}\n"
             f"最近对话：\n{transcript}\n"
             f"{cards_block}"
         )
@@ -446,7 +583,7 @@ class LLMClient:
         
         # 构建详细的评分标准
         scoring_criteria = self._build_scoring_criteria(session, sales_turns, avg_sales_length)
-        score_formula = build_score_formula_text()
+        score_formula = build_score_formula_text(getattr(session, "goal", "") or "")
         cards_text = _product_cards_text(session, knowledge)
         cards_block = f"\n产品卡（选型/边界/价值参考）：\n{cards_text}\n" if cards_text else ""
 
@@ -457,8 +594,19 @@ class LLMClient:
             "固定 JSON 字段：overall_score, summary, scores, good_lines, risk_lines, alternatives, checklist, citations。\n"
             "scores 必须包含 7 项：工艺探询、产品选型、技术边界、异议处理、故障归因、价值合规、推进动作；"
             "每项格式为 {\"name\":\"维度\",\"value\":1-5,\"reason\":\"结合本次内容的具体原因\"}。\n"
-            "citations 至少引用一条命中的知识库来源，source 使用文档名和版本，reason 写清片段类型、章节/页码和引用原因；"
-            "如果知识库为空或明显没有命中，reason 写“依据不足”，不要伪造来源。\n"
+            "## 内容契约（good_lines / risk_lines / alternatives 必须遵守）\n"
+            "1. good_lines、risk_lines、alternatives 必须结合知识库中的 recommended（推荐话术）、banned（禁用话术）"
+            "以及产品卡里的型号/工艺条件/技术边界/认证信息来写，不要脱离资料写空话。\n"
+            "2. good_lines：指出业务员说对了什么，优先点出与 recommended 口径一致、或用上了产品卡型号/参数/认证的具体句子。\n"
+            "3. risk_lines：指出踩了哪些 banned 禁用口径或技术边界（瞎承诺、型号错配、未问清水质水温就推、"
+            "混淆日标/国标、认证乱承诺），要能对应到具体话术。\n"
+            "4. alternatives：写成业务员下一轮可直接开口说的纺织助剂话术，口语、完整句子；"
+            "尽量含具体型号（如 HT-790/831B/868/833）、工艺条件（用量、温度、浸轧/浸渍、同浴/分浴）、"
+            "测试标准（日标/国标、湿摩擦级数）或认证（bluesign/GOTS/OEKO-TEX/ZDHC）；"
+            "禁止「加强沟通」「体现价值」这类空话。\n"
+            "5. citations 必须指向真实命中的知识库来源：source 必须使用下方知识库条目里的文档名（source:…），"
+            "不得编造文档名；reason 写清 chunk_type、章节/页码，以及该片段如何支撑评分或建议。\n"
+            "6. 如果知识库为空或明显没有命中，citations 的 reason 写“依据不足”，不要伪造来源。\n"
             "若对话中出现技术/老板入场（客户消息带 [tech]/[boss] 等角色标签），"
             "客户洞察与异议处理可参照多角色表现：技术追问是否接住、老板拍板/底线是否回应。\n\n"
             "## 评分标准（必须严格遵循）\n"
@@ -485,9 +633,10 @@ class LLMClient:
             common
             + "客户情景陪练输出要求：\n"
             + "summary 写成教练总体评价，不超过 80 字。\n"
-            + "good_lines 摘录或改写 2 条本轮表现亮点，尽量点出具体型号、工艺参数、认证或案例。\n"
-            + "risk_lines 指出 2 条具体话术风险，结合型号错配、边界瞎承诺、水质/工艺未问清等。\n"
-            + "alternatives 给 2-3 条替代话术，必须可直接用于下一次客户沟通，含具体型号、工艺条件、测试标准或认证价值。\n"
+            + "good_lines 摘录或改写 2 条本轮表现亮点，尽量点出具体型号、工艺参数、认证或案例，并标明与知识库 recommended 的一致点。\n"
+            + "risk_lines 指出 2 条具体话术风险，结合型号错配、边界瞎承诺、水质/工艺未问清、踩到 banned 禁用口径等。\n"
+            + "alternatives 给 2-3 条替代话术，必须可直接用于下一次客户沟通，含具体型号、工艺条件、测试标准或认证价值；"
+            + "示例味道：「按您说的水温偏高，建议先用 HT-790 做 2g/L 浸轧小样，日标测湿擦，我们出测试报告再谈大货」。\n"
             + "checklist 给 3 个下一轮训练动作，写清可执行条件（如补问水质水温、约工程师定小样条件、准备测试报告）。\n"
         )
 
@@ -497,13 +646,23 @@ class LLMClient:
         sales_turns: int,
         avg_sales_length: float,
     ) -> str:
-        """评分标准文案来自 scoring 模块（与权重同源）。"""
-        return build_scoring_criteria_text(
-            sales_turns=sales_turns,
-            avg_sales_length=avg_sales_length,
-            goal=session.goal,
-            stage=session.stage,
-        )
+        """评分标准文案来自 scoring 模块（与权重同源）。
+
+        scoring 侧签名可能因 goal 调权而变化，这里只做调用适配，不改 scoring 内部实现。
+        """
+        try:
+            return build_scoring_criteria_text(
+                sales_turns=sales_turns,
+                avg_sales_length=avg_sales_length,
+                goal=session.goal,
+                stage=session.stage,
+            )
+        except TypeError:
+            # 兼容签名变化（新增/改名参数）：按位置参数调用，或退回最小参数集
+            try:
+                return build_scoring_criteria_text(sales_turns, avg_sales_length, session.goal, session.stage)
+            except TypeError:
+                return build_scoring_criteria_text(sales_turns, avg_sales_length, "", "")
 
     def _configured(self, config: EffectiveLLMConfig) -> bool:
         return config.configured
@@ -594,17 +753,33 @@ class LLMClient:
         else:
             scores = [self._score_item(item, fallback["scores"][index]) for index, item in enumerate(scores[:7])]
 
-        # 重新计算overall_score，确保符合权重规则
+        # 硬约束在 LLM 评分后强制执行（工艺探询/推进动作/技术边界）
+        sales_texts = [
+            getattr(m, "content", "") or ""
+            for m in (getattr(session, "messages", None) or [])
+            if getattr(m, "role", "") == "sales"
+        ]
+        if not sales_texts:
+            sales_texts = [
+                (m.get("content", "") if isinstance(m, dict) else getattr(m, "content", ""))
+                for m in (getattr(session, "messages", None) or [])
+                if (m.get("role") if isinstance(m, dict) else getattr(m, "role", "")) == "sales"
+            ]
+        scores = enforce_hard_caps(scores, sales_texts)
+
+        # 重新计算overall_score，确保符合（可按 goal 调整的）权重规则
         overall_score = self._calculate_overall_score(scores, session)
-        
+
+        knowledge_sources = {item.source_name for item in knowledge if item.source_name}
         citations = data.get("citations")
         if not isinstance(citations, list) or not citations:
-            citations = [{"source": source, "reason": source_reason}]
+            citations = []
         else:
-            citations = [self._citation_item(item, source, source_reason) for item in citations[:4]]
-        knowledge_sources = {item.source_name for item in knowledge}
+            citations = [self._citation_item(item, source, source_reason, knowledge_sources) for item in citations[:4]]
         if knowledge_sources and not any(item["source"] in knowledge_sources for item in citations):
             citations.insert(0, {"source": source, "reason": source_reason})
+        if not citations:
+            citations = [{"source": source, "reason": source_reason}]
         status = self._text(data.get("llm_status"), "mock:normalized")
         if status.startswith("mock:"):
             citations.insert(0, {"source": "LLM 调用状态", "reason": status})
@@ -635,7 +810,8 @@ class LLMClient:
             )
         except Exception:
             sales_turns = 3
-        return calculate_overall_score(scores, sales_turns=sales_turns)
+        goal = getattr(session, "goal", "") or ""
+        return calculate_overall_score(scores, sales_turns=sales_turns, goal=goal)
 
     def _normalize_opportunity_report(
         self,
@@ -692,11 +868,35 @@ class LLMClient:
     def _score_item(self, item: Any, fallback: dict[str, Any]) -> dict[str, Any]:
         return normalize_score_item(item, fallback)
 
-    def _citation_item(self, item: Any, source: str, reason: str) -> dict[str, str]:
+    def _citation_item(
+        self,
+        item: Any,
+        source: str,
+        reason: str,
+        knowledge_sources: set[str] | None = None,
+    ) -> dict[str, str]:
         if not isinstance(item, dict):
             return {"source": source, "reason": reason}
+        raw_source = self._text(item.get("source"), source)
+        # citations 必须指向真实命中来源：对不上知识库文档名时，尝试模糊回填
+        if knowledge_sources:
+            if raw_source in knowledge_sources:
+                matched = raw_source
+            else:
+                matched = next(
+                    (
+                        name
+                        for name in knowledge_sources
+                        if name in raw_source or raw_source in name
+                    ),
+                    None,
+                )
+            if matched:
+                raw_source = matched
+            elif source in knowledge_sources:
+                raw_source = source
         return {
-            "source": self._text(item.get("source"), source),
+            "source": raw_source,
             "reason": self._text(item.get("reason"), reason),
         }
 

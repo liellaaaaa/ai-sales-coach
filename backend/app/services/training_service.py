@@ -114,7 +114,7 @@ class TrainingService:
         db.refresh(message)
         return message
 
-    async def suggest_reply(self, db: Session, session: TrainingSession) -> str:
+    async def suggest_reply(self, db: Session, session: TrainingSession) -> dict[str, str]:
         knowledge = find_relevant_knowledge(db, session)
         return await self.llm.suggested_reply(session, session.messages, knowledge)
 
@@ -128,7 +128,7 @@ class TrainingService:
         if not isinstance(tips, list):
             tips = []
         tips = [str(t).strip() for t in tips if str(t).strip()][:2]
-        return tips or ["补问水质与水温", "把下一步收成具体人/时间"][:2]
+        return tips or self.llm._fallback_live_tips(knowledge)
 
     def snapshot_session(self, session: TrainingSession) -> dict[str, Any]:
         return {

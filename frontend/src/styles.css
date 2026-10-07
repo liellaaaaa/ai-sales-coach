@@ -2167,6 +2167,13 @@ fieldset:disabled button:hover {
   line-height: 1.5;
 }
 
+.ai-suggestion-popover small.suggestion-source {
+  border-top: none;
+  padding-top: 4px;
+  color: #5b6b7f;
+  font-size: 11px;
+}
+
 .suggestion-loading {
   display: grid;
   gap: 12px;
