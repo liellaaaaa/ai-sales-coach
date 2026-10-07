@@ -118,8 +118,19 @@ def _knowledge_text(items: list[KnowledgeItem]) -> str:
 def _customer_profile_text(session: TrainingSession) -> str:
     difficulty = getattr(session, "customer_difficulty", "") or "标准"
     personality = getattr(session, "customer_personality", "") or "谨慎型"
-    concern = getattr(session, "customer_concern", "") or "价格"
-    return f"客户难度：{difficulty}；客户性格：{personality}；核心关注：{concern}"
+    concern = getattr(session, "customer_concern", "") or "供应稳定"
+    relationship = getattr(session, "customer_type", "") or ""
+    setup = getattr(session, "setup_context", None) or {}
+    persona = ""
+    if isinstance(setup, dict):
+        persona = (
+            (setup.get("customer_info") or {}).get("customer_persona")
+            or (setup.get("training_profile") or {}).get("customer_persona")
+            or ""
+        )
+    parts = [f"客户关系：{relationship}" if relationship else "", f"客户画像：{persona}" if persona else ""]
+    parts.extend([f"客户难度：{difficulty}", f"客户性格：{personality}", f"核心关注：{concern}"])
+    return "；".join(p for p in parts if p)
 
 
 def _product_cards_text(session: Any, knowledge: list[KnowledgeItem] | None = None) -> str:
@@ -176,6 +187,7 @@ class LLMClient:
             "6. 不要向业务员背诵资料原文，不要报来源、不要念参数表。\n\n"
             "# 客户画像\n"
             f"{_customer_profile_text(session)}\n"
+            "注意：客户关系只表示是否有合作，不代表价格态度；陌拜新客户也可能专业、关注品质或工艺，不一定是价格敏感。\n"
             f"客户公司：{session.customer_name} / {session.customer_type}\n"
             f"训练类型：{session.training_type}\n商机阶段：{session.stage}\n训练目标：{session.goal}\n"
             f"背景：{session.background}\n\n"
@@ -713,7 +725,7 @@ class LLMClient:
 
     def _mock_customer_reply(self, session: TrainingSession, messages: list[TrainingMessage]) -> str:
         sales_turns = [m for m in messages if m.role == "sales"]
-        concern = getattr(session, "customer_concern", "") or "价格"
+        concern = getattr(session, "customer_concern", "") or "供应稳定"
         difficulty = getattr(session, "customer_difficulty", "") or "标准"
         personality = getattr(session, "customer_personality", "") or "谨慎型"
 
@@ -723,11 +735,17 @@ class LLMClient:
             opening = "交期能不能保证是我现在最担心的点"
         elif concern == "品质":
             opening = "品质稳定性和返工风险我需要先确认"
+        elif concern == "环保合规":
+            opening = "环保认证和残留指标我必须先看清楚"
+        elif concern == "工艺适配":
+            opening = "工艺能不能配上、会不会出问题，我得先确认"
+        elif concern == "供应稳定":
+            opening = "我们现在供应商挺稳定的，换供应商风险太大"
         else:
             opening = "售后响应和后续服务我需要先看清楚"
 
         if difficulty == "高压":
-            pressure = "如果没有更明确的降价、成本依据或保障，我很难继续推进。"
+            pressure = "如果没有更明确的保障或依据，我很难继续推进。"
         elif difficulty == "刁钻":
             pressure = "你现在的说法还不够具体，我需要看到依据。"
         else:
@@ -737,6 +755,8 @@ class LLMClient:
             pressure = "我时间不多，你直接说重点。"
         elif personality == "专业型":
             pressure = "最好能给到数据、案例或测试条件。"
+        elif personality == "压价型":
+            pressure = "如果价格没有空间，后面就不用谈了。"
 
         if len(sales_turns) <= 1:
             return f"[buyer]{opening}。{pressure}"

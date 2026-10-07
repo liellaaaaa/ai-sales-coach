@@ -53,6 +53,40 @@ def find_relevant_knowledge(db: Session, session: TrainingSession, limit: int = 
     return [item for _, item in sorted(scored, key=lambda pair: pair[1].id, reverse=True)[:limit]]
 
 
+def _customer_type_match(item_customer: str, session_customer: str) -> int:
+    """客户类型匹配：关系阶段与画像可交叉命中，通用条目始终给弱分。"""
+    if not item_customer or item_customer in GENERIC_VALUES:
+        return 1
+    if not session_customer or session_customer in GENERIC_VALUES:
+        return 1
+    if item_customer == session_customer:
+        return 4
+    if item_customer in session_customer or session_customer in item_customer:
+        return 3
+
+    # 关系阶段同族：新客户系 / 老客户系
+    new_family = {"陌拜新客户", "潜在新客户", "新成交客户", "新客户"}
+    old_family = {"老客户", "成交客户", "复购客户"}
+    if item_customer in new_family and session_customer in new_family:
+        return 2
+    if item_customer in old_family and session_customer in old_family:
+        return 2
+
+    # 画像关键词：技术型 / 采购 / 价格敏感等历史标签
+    persona_hints = (
+        ("技术", ("技术", "研发", "工程师")),
+        ("采购", ("采购",)),
+        ("价格", ("价格", "压价")),
+        ("渠道", ("渠道", "外贸")),
+    )
+    for key, tokens in persona_hints:
+        item_hit = key in item_customer or any(t in item_customer for t in tokens)
+        session_hit = key in session_customer or any(t in session_customer for t in tokens)
+        if item_hit and session_hit:
+            return 2
+    return 0
+
+
 def _knowledge_score(item: KnowledgeItem, session: TrainingSession) -> int:
     score = 0
     item_stage = _clean(item.stage)
@@ -61,6 +95,16 @@ def _knowledge_score(item: KnowledgeItem, session: TrainingSession) -> int:
     session_stage = _clean(session.stage)
     session_goal = _clean(session.goal)
     session_customer = _clean(session.customer_type)
+    session_setup = getattr(session, "setup_context", None) or {}
+    if isinstance(session_setup, dict):
+        persona = (
+            (session_setup.get("customer_info") or {}).get("customer_persona")
+            or (session_setup.get("training_profile") or {}).get("customer_persona")
+            or ""
+        )
+    else:
+        persona = ""
+    session_customer_full = _clean(" ".join(filter(None, [session_customer, persona])))
 
     if item_stage == session_stage:
         score += 8
@@ -70,10 +114,10 @@ def _knowledge_score(item: KnowledgeItem, session: TrainingSession) -> int:
         score += 8
     elif item_scenario in GENERIC_VALUES:
         score += 1
-    if item_customer == session_customer:
-        score += 4
-    elif item_customer in GENERIC_VALUES:
-        score += 1
+    score += max(
+        _customer_type_match(item_customer, session_customer),
+        _customer_type_match(item_customer, session_customer_full),
+    )
 
     chunk_hints = _chunk_hints(session_goal, session_stage)
     if item.chunk_type in chunk_hints:

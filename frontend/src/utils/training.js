@@ -6,7 +6,11 @@ export function buildTrainingPayload(form) {
     `业务员：${form.owner_name}`,
     `产品：${form.product_name}`,
     `需求：${form.product_need}`,
+    `客户关系：${form.customer_type}`,
   ];
+  if (form.customer_persona) {
+    lines.push(`客户画像：${form.customer_persona}`);
+  }
   if (form.training_type === OPPORTUNITY_MODE) {
     lines.push(`最近一次沟通结果：${form.last_contact}`);
     lines.push(`关键阻碍：${form.decision_blocker}`);
@@ -35,12 +39,15 @@ export function buildSetupContext(form) {
       owner_name: form.owner_name,
       customer_name: form.customer_name,
       customer_type: form.customer_type,
+      customer_persona: form.customer_persona || "",
       product_name: form.product_name,
       product_need: form.product_need,
     },
     training_profile: {
       stage: form.stage,
       goal: form.goal,
+      customer_relationship: form.customer_type,
+      customer_persona: form.customer_persona || "",
       customer_difficulty: form.customer_difficulty,
       customer_personality: form.customer_personality,
       customer_concern: form.customer_concern,
@@ -69,6 +76,7 @@ export function buildSetupContext(form) {
 }
 
 export function sessionPayloadFromSession(item) {
+  const setup = item.setup_context || {};
   return {
     training_type: item.training_type,
     stage: item.stage,
@@ -77,9 +85,10 @@ export function sessionPayloadFromSession(item) {
     customer_type: item.customer_type,
     customer_difficulty: item.customer_difficulty || "标准",
     customer_personality: item.customer_personality || "谨慎型",
-    customer_concern: item.customer_concern || "价格",
+    customer_concern: item.customer_concern || "供应稳定",
     template_id: item.template_id || "",
-    setup_context: item.setup_context || {},
+    setup_context: setup,
     background: item.background,
+    customer_persona: setup?.customer_info?.customer_persona || setup?.training_profile?.customer_persona || "",
   };
 }

@@ -101,9 +101,78 @@ export const stageTrainingGoals = {
 
 export const trainingGoals = stageTrainingGoals["商务谈判"];
 
+// ---------------------------------------------------------------------------
+// 客户维度：关系阶段 / 对接画像 / 难度 / 性格 / 关注点 —— 彼此正交，不要绑死。
+// 例：陌拜新客户可以是「专业型 + 品质」，也可以是「敷衍型 + 供应稳定」。
+// ---------------------------------------------------------------------------
+
+/** 客户关系阶段（是否已有合作）—— 与价格敏感、性格无关 */
+export const customerRelationshipOptions = [
+  "陌拜新客户",
+  "潜在新客户",
+  "新成交客户",
+  "老客户",
+];
+
+/** 对接角色 / 行业画像 —— 你在跟谁说话 */
+export const customerPersonaOptions = [
+  "印染加工厂·采购经理",
+  "印染加工厂·技术主管",
+  "印染加工厂·厂长",
+  "面料生产厂·研发工程师",
+  "面料生产厂·技术主管",
+  "纺织外贸公司·采购经理",
+  "纺织外贸公司·外贸经理",
+];
+
 export const customerDifficultyOptions = ["标准", "刁钻", "高压"];
 export const customerPersonalityOptions = ["谨慎型", "压价型", "专业型", "敷衍型"];
-export const customerConcernOptions = ["价格", "交期", "品质", "售后", "环保合规", "工艺适配"];
+/** 核心关注：新客户常见「供应稳定 / 工艺适配」，不一定价格敏感 */
+export const customerConcernOptions = [
+  "价格",
+  "交期",
+  "品质",
+  "售后",
+  "环保合规",
+  "工艺适配",
+  "供应稳定",
+];
+
+/** 场景/目标 → 默认客户关系（可被用户改掉） */
+const relationshipByGoal = {
+  线索判断: "陌拜新客户",
+  首次触达: "陌拜新客户",
+  约到拜访: "陌拜新客户",
+  需求澄清: "潜在新客户",
+  取得样品: "潜在新客户",
+  关键人确认: "潜在新客户",
+  再次拜访: "潜在新客户",
+  技术交涉: "潜在新客户",
+  试样推进: "潜在新客户",
+  报告讲解: "潜在新客户",
+  未通过复盘: "新成交客户",
+  技术质疑: "老客户",
+  价格异议: "潜在新客户",
+  条件谈判: "潜在新客户",
+  报价解释: "潜在新客户",
+  成交推进: "潜在新客户",
+  合同签订: "新成交客户",
+  订单交付: "新成交客户",
+  责任边界: "新成交客户",
+  回款交涉: "老客户",
+  服务稳定: "老客户",
+  老客维护: "老客户",
+  复购推进: "老客户",
+};
+
+export function inferCustomerRelationship({ stage, goal, training_type } = {}) {
+  if (goal && relationshipByGoal[goal]) return relationshipByGoal[goal];
+  if (stage === "回款") return "老客户";
+  if (stage === "了解商机") return "陌拜新客户";
+  if (stage === "确认商机") return "潜在新客户";
+  if (training_type === OPPORTUNITY_MODE && stage === "商务谈判") return "潜在新客户";
+  return "潜在新客户";
+}
 
 export const trainingTemplates = [
   {
@@ -114,7 +183,8 @@ export const trainingTemplates = [
     training_type: "客户情景陪练",
     stage: "方案论证",
     goal: "技术质疑",
-    customer_type: "印染加工厂·技术主管",
+    customer_type: "老客户",
+    customer_persona: "印染加工厂·技术主管",
     product_name: "湿摩擦牢度提升剂 833",
     product_need: "先定位出斑原因，再谈返修或换型",
     background:
@@ -131,7 +201,8 @@ export const trainingTemplates = [
     training_type: "客户情景陪练",
     stage: "方案论证",
     goal: "技术交涉",
-    customer_type: "印染加工厂·技术主管",
+    customer_type: "潜在新客户",
+    customer_persona: "印染加工厂·技术主管",
     product_name: "湿摩擦牢度提升剂 868",
     product_need: "在不影响效率前提下把湿擦做到三级以上",
     background:
@@ -148,7 +219,8 @@ export const trainingTemplates = [
     training_type: "客户情景陪练",
     stage: "方案论证",
     goal: "技术交涉",
-    customer_type: "纺织外贸公司·采购经理",
+    customer_type: "潜在新客户",
+    customer_persona: "纺织外贸公司·采购经理",
     product_name: "无酚固色剂 HT-790",
     product_need: "替代有双酚风险的普通固色剂，保住品牌单",
     background:
@@ -165,7 +237,8 @@ export const trainingTemplates = [
     training_type: "客户情景陪练",
     stage: "方案论证",
     goal: "未通过复盘",
-    customer_type: "面料生产厂·研发工程师",
+    customer_type: "新成交客户",
+    customer_persona: "面料生产厂·研发工程师",
     product_name: "湿摩擦牢度提升剂 833",
     product_need: "解释大小样差异并给出可执行补救方案",
     background:
@@ -182,7 +255,8 @@ export const trainingTemplates = [
     training_type: "客户情景陪练",
     stage: "确认商机",
     goal: "需求澄清",
-    customer_type: "印染加工厂·技术主管",
+    customer_type: "潜在新客户",
+    customer_persona: "印染加工厂·技术主管",
     product_name: "湿摩擦牢度提升剂 831B",
     product_need: "在高水温高硬度条件下稳定出湿擦效果",
     background:
@@ -199,14 +273,15 @@ export const trainingTemplates = [
     training_type: "客户情景陪练",
     stage: "了解商机",
     goal: "首次触达",
-    customer_type: "印染加工厂·采购经理",
+    customer_type: "陌拜新客户",
+    customer_persona: "印染加工厂·采购经理",
     product_name: "固色剂 HT-766 / 亲水硅油",
     product_need: "破冰、摸清供应现状并约到微信或拜访",
     background:
       "从行业名录拿到珠三角某针织染厂采购电话，第一次联系。客户供应体系稳定，采购被同行频繁拜访，大概率会说「已经有稳定供应商了」。开场30秒自报家门：宏昊化工纺织助剂源头厂家，广东不少染厂在用我们固色剂和硅油，想了解贵司助剂是自选型还是有稳定供应商。禁用开场报价、贬低同行、一次塞满资料。有供应商就顺势加微信发目录留痕，再约15分钟带样品和工程师上门判断适配性。",
     customer_difficulty: "高压",
     customer_personality: "敷衍型",
-    customer_concern: "价格",
+    customer_concern: "供应稳定",
   },
   {
     id: "quality-hold-payment",
@@ -216,7 +291,8 @@ export const trainingTemplates = [
     training_type: "客户情景陪练",
     stage: "回款",
     goal: "回款交涉",
-    customer_type: "印染加工厂·采购经理",
+    customer_type: "老客户",
+    customer_persona: "印染加工厂·采购经理",
     product_name: "湿摩擦牢度提升剂 8667",
     product_need: "质量争议与付款义务分开收口",
     background:
@@ -233,7 +309,8 @@ export const trainingTemplates = [
     training_type: "客户情景陪练",
     stage: "方案论证",
     goal: "技术交涉",
-    customer_type: "面料生产厂·技术主管",
+    customer_type: "潜在新客户",
+    customer_persona: "面料生产厂·技术主管",
     product_name: "同浴固色剂 HT-766",
     product_need: "缩短固色流程并保住泡水、水洗牢度",
     background:
@@ -250,7 +327,8 @@ export const trainingTemplates = [
     training_type: OPPORTUNITY_MODE,
     stage: "了解商机",
     goal: "约到拜访",
-    customer_type: "印染加工厂·厂长",
+    customer_type: "陌拜新客户",
+    customer_persona: "印染加工厂·厂长",
     product_name: "前处理助剂 / 固色剂 / 湿摩擦牢度提升剂",
     product_need: "建立源头厂家形象并约到首次拜访",
     background:
@@ -261,7 +339,7 @@ export const trainingTemplates = [
     stakeholder: "暂无直接联系人，厂长、技术主管与采购的决策关系未知",
     customer_difficulty: "标准",
     customer_personality: "敷衍型",
-    customer_concern: "品质",
+    customer_concern: "供应稳定",
   },
   {
     id: "overseas-bluesign",
@@ -271,7 +349,8 @@ export const trainingTemplates = [
     training_type: OPPORTUNITY_MODE,
     stage: "方案论证",
     goal: "报告讲解",
-    customer_type: "纺织外贸公司·外贸经理",
+    customer_type: "潜在新客户",
+    customer_persona: "纺织外贸公司·外贸经理",
     product_name: "湿摩擦牢度提升剂 868",
     product_need: "在高温水质下稳定过出口环保与牢度标准",
     background:
@@ -319,7 +398,8 @@ export const defaultForm = {
   goal: "价格异议",
   owner_name: "陈宇",
   customer_name: "清远某针织染厂",
-  customer_type: "印染加工厂·采购经理",
+  customer_type: "潜在新客户",
+  customer_persona: "印染加工厂·采购经理",
   product_name: "HT-790 无酚固色剂",
   product_need: "品牌单环保合规，色牢度要稳定",
   background:

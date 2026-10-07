@@ -1,5 +1,10 @@
 import React from "react";
-import { normalizeDashboardScores, distributionRows, buildScoreTrend, trendScoreColor } from "../utils/score";
+import {
+  normalizeDashboardScores,
+  distributionRows,
+  buildScoreTrend,
+  trendScoreColor,
+} from "../utils/score";
 import AbilityRadar from "../components/AbilityRadar";
 import { Empty } from "../components/Layout";
 
@@ -25,9 +30,7 @@ export default function Dashboard({ summary }) {
   const scoreAverages = normalizeDashboardScores(summary.score_averages);
   const hasScoreData = completedCount > 0 || scoreAverages.some((item) => item.value > 0);
   const weakDimensions = [...scoreAverages].filter((item) => item.value > 0).sort((a, b) => a.value - b.value).slice(0, 3);
-  const strongDimensions = [...scoreAverages].filter((item) => item.value > 0).sort((a, b) => b.value - a.value).slice(0, 3);
   const weakDimension = weakDimensions[0];
-  const strongDimension = strongDimensions[0];
   const topGoal = goals[0];
   const recentScores = Array.isArray(summary.recent_scores) ? summary.recent_scores.slice(-10) : [];
   const scoreTrend = buildScoreTrend(recentScores.map((item) => item.score));
@@ -67,37 +70,43 @@ export default function Dashboard({ summary }) {
         <>
           <div className="profile-grid">
             <section className="profile-panel ability-overview">
-              <div className="profile-section-head"><div><span>能力画像</span><h4>七项能力均分</h4></div><p>来自已完成复盘报告的分项评分。</p></div>
+              <div className="profile-section-head">
+                <div><span>能力画像</span><h4>七项能力均分</h4></div>
+                <p>来自已完成复盘报告的分项评分。</p>
+              </div>
               <div className="profile-ability-layout">
                 <AbilityRadar scores={scoreAverages} />
-                <div className="profile-insight-list">
-                  <article className="profile-insight strong"><span>优势能力</span><b>{strongDimension?.name || "暂无"}</b><p>{strongDimension ? `${strongDimension.value} / 5，继续沉淀可复用表达。` : "完成复盘后生成优势能力。"}</p></article>
-                  <article className="profile-insight weak"><span>优先补强</span><b>{weakDimension?.name || "暂无"}</b><p>{weakDimension ? `${weakDimension.value} / 5，建议下一轮集中练习。` : "完成复盘后生成短板判断。"}</p></article>
-                </div>
               </div>
             </section>
             <section className="profile-panel action-center">
-              <div className="profile-section-head"><div><span>下一步行动</span><h4>本周训练建议</h4></div><p>把数据转成下一轮训练任务。</p></div>
+              <div className="profile-section-head">
+                <div><span>下一步行动</span><h4>本周训练建议</h4></div>
+              </div>
               <div className="action-card primary-action">
                 <span>优先练习</span>
                 <strong>{nextFocus}</strong>
-                <p>{weakDimension ? `围绕"${weakDimension.name}"做 1 次客户情景陪练，并在复盘里确认话术是否更具体。` : "先完成一次客户情景陪练，生成第一份能力画像。"}</p>
+                <p>{weakDimension ? `围绕"${weakDimension.name}"做 1 次客户情景陪练，复盘里确认话术是否更具体。` : "先完成一次客户情景陪练，生成第一份能力画像。"}</p>
               </div>
               <div className="action-steps">
                 <span>建议节奏</span>
-                <p>3 天内完成 1 次对话训练，随后用同一背景再生成 1 份商机推进方案。</p>
+                <p>3 天内完成 1 次对话训练，再用同一背景生成 1 份商机推进方案。</p>
               </div>
             </section>
           </div>
           <div className="profile-grid lower">
             <section className="profile-panel trend-panel">
-              <div className="profile-section-head"><div><span>成长趋势</span><h4>最近 10 次得分</h4></div></div>
+              <div className="profile-section-head">
+                <div><span>成长趋势</span><h4>最近 10 次得分</h4></div>
+                {scoreTrend.points.length > 0 && (
+                  <p>共 {scoreTrend.points.length} 次 · 均分 {averageScore || "-"}</p>
+                )}
+              </div>
               <div className="score-trend-line">
                 {scoreTrend.points.length ? (
                   <svg viewBox={`0 0 ${scoreTrend.width} ${scoreTrend.height}`} role="img" aria-label="最近 10 次训练得分折线趋势">
                     <defs>
                       <linearGradient id="scoreTrendArea" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#1a73e8" stopOpacity="0.18" />
+                        <stop offset="0%" stopColor="#1a73e8" stopOpacity="0.22" />
                         <stop offset="100%" stopColor="#1a73e8" stopOpacity="0.02" />
                       </linearGradient>
                     </defs>
@@ -120,7 +129,10 @@ export default function Dashboard({ summary }) {
               </div>
             </section>
             <section className="profile-panel distribution-panel">
-              <div className="profile-section-head"><div><span>训练结构</span><h4>高频场景与阶段</h4></div><p>看最近训练是否过度集中。</p></div>
+              <div className="profile-section-head">
+                <div><span>训练结构</span><h4>高频场景与阶段</h4></div>
+                <p>看最近训练是否过度集中。</p>
+              </div>
               <div className="distribution-columns">
                 <div><b>目标 Top 5</b>{goals.length ? goals.map((item) => <DistributionRow item={item} key={item.name} />) : <p className="small">暂无训练目标分布。</p>}</div>
                 <div><b>阶段覆盖</b>{stages.length ? stages.map((item) => <DistributionRow item={item} key={item.name} />) : <p className="small">暂无商机阶段分布。</p>}</div>

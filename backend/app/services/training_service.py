@@ -141,7 +141,7 @@ class TrainingService:
             "customer_type": session.customer_type,
             "customer_difficulty": getattr(session, "customer_difficulty", "") or "标准",
             "customer_personality": getattr(session, "customer_personality", "") or "谨慎型",
-            "customer_concern": getattr(session, "customer_concern", "") or "价格",
+            "customer_concern": getattr(session, "customer_concern", "") or "供应稳定",
             "template_id": session.template_id or "",
             "background": session.background,
         }

@@ -82,6 +82,7 @@ export default function AbilityRadar({ scores }) {
             }}
           >
             {item.shortName}
+            <i>（{item.value}）</i>
           </span>
         ))}
         {activeItem && (
