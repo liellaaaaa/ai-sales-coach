@@ -146,7 +146,7 @@ function BargeInBar({ onInterrupt }) {
   );
 }
 
-export default function Chat({ session, onSession, onReport, onError, onReset, onStartTraining, voiceEnabled }) {
+export default function Chat({ session, restoring, onSession, onReport, onError, onReset, onStartTraining, voiceEnabled }) {
   const [text, setText] = useState("");
   const [showExample, setShowExample] = useState(false);
   const [suggestion, setSuggestion] = useState(null);
@@ -280,7 +280,10 @@ export default function Chat({ session, onSession, onReport, onError, onReset, o
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [showExample]);
 
-  if (!session) return <Empty title="还没有训练" text="先从开始训练创建一次会话。" actionLabel="去开始训练" onAction={onStartTraining} />;
+  if (!session) {
+    if (restoring) return <Empty title="正在恢复对话" text="正在从历史记录加载最近一次训练…" />;
+    return <Empty title="还没有训练" text="先从开始训练创建一次会话。" actionLabel="去开始训练" onAction={onStartTraining} />;
+  }
 
   async function send(forcedContent) {
     const isForced = forcedContent != null;
