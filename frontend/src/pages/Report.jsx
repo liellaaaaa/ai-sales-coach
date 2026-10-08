@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { OPPORTUNITY_MODE } from "../constants/training";
 import { normalizeTextList, normalizeStrategies, normalizeTodos, buildSpeechPair, filterCitations } from "../utils/report";
+import { buildPlanTrainingDraft } from "../utils/training";
 import { scoreToneClass, scoreLevelLabel, buildTrainingTask } from "../utils/score";
 import AbilityRadar from "../components/AbilityRadar";
 import { Empty } from "../components/Layout";
@@ -22,7 +23,7 @@ function ScoreReason({ reason }) {
   );
 }
 
-export default function Report({ report }) {
+export default function Report({ report, session, onTrainFromPlan }) {
   if (!report) return <Empty title="还没有结果报告" text="完成客户陪练或生成推进方案后，这里会显示评分、依据和下一步建议。" />;
   const isOpportunity = report.training_type === OPPORTUNITY_MODE;
   const diagnosis = report.opportunity_diagnosis;
@@ -91,6 +92,7 @@ export default function Report({ report }) {
     const commandNote = riskLines[0]
       || diagnosis?.keyRisk
       || `当前最大风险：${opportunityContext?.decision_blocker || "关键阻碍未拆成可验证动作"}。`;
+    const planDraft = buildPlanTrainingDraft(report, session);
     return (
       <section className="page opportunity-plan-page">
         <div className="opportunity-hero">
@@ -99,6 +101,14 @@ export default function Report({ report }) {
             <h3>{opportunityContext?.customer_name || report.customer_name || "当前商机"}</h3>
             <p>{heroSummary}</p>
             <div className="report-meta"><span>{report.stage}</span><span>{report.goal}</span><span>{opportunityContext?.decision_blocker || "关键阻碍待确认"}</span></div>
+            {onTrainFromPlan && (
+              <div className="opportunity-train-actions">
+                <button type="button" className="primary" onClick={() => onTrainFromPlan(planDraft)}>
+                  用这份方案开练
+                </button>
+                <span className="hint">把优先动作和策略带入「客户情景陪练」，按本方案焦点练一次。</span>
+              </div>
+            )}
           </div>
           <div className="opportunity-score">
             <span>推进成熟度</span>

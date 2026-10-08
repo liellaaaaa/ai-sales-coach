@@ -32,6 +32,7 @@ function App() {
   const [runtimeStatus, setRuntimeStatus] = useState(null);
   const [error, setError] = useState("");
   const [restoringSession, setRestoringSession] = useState(false);
+  const [planDraft, setPlanDraft] = useState(null);
   const restoreLockRef = useRef(false);
 
   async function loadRuntimeStatus() {
@@ -212,9 +213,27 @@ function App() {
       logout={logout}
     >
       {error && <div className="toast">{error}</div>}
-      {view === "start" && <StartTraining user={user} onError={setError} onStarted={startSession} recordCount={sessions.length} />}
+      {view === "start" && (
+        <StartTraining
+          user={user}
+          onError={setError}
+          onStarted={startSession}
+          recordCount={sessions.length}
+          planDraft={planDraft}
+          onPlanDraftApplied={() => setPlanDraft(null)}
+        />
+      )}
       {view === "chat" && <Chat session={session} restoring={restoringSession} voiceEnabled={runtimeStatus?.voice_configured === true} onError={setError} onSession={setSession} onReset={resetCurrentChat} onStartTraining={() => setView("start")} onReport={(nextReport) => { setReport(withSessionMeta(nextReport, session)); setView("report"); loadAll(); }} />}
-      {view === "report" && <Report report={report} />}
+      {view === "report" && (
+        <Report
+          report={report}
+          session={session}
+          onTrainFromPlan={(draft) => {
+            setPlanDraft(draft);
+            setView("start");
+          }}
+        />
+      )}
       {view === "history" && (
         <History
           sessions={sessions}

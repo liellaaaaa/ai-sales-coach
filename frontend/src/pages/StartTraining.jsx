@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   OPPORTUNITY_MODE,
   opportunityStages,
@@ -32,15 +32,39 @@ function SectionHead({ index, title, desc, right }) {
   );
 }
 
-export default function StartTraining({ onStarted, onError, recordCount, user }) {
+function mergePlanDraft(prev, draft, ownerName) {
+  if (!draft) return prev;
+  const stage = draft.stage || prev.stage;
+  return {
+    ...prev,
+    ...draft,
+    training_type: "客户情景陪练",
+    goal: resolveGoalForStage(stage, draft.goal || prev.goal),
+    owner_name: ownerName || prev.owner_name,
+    plan_training: draft.plan_training,
+  };
+}
+
+export default function StartTraining({ onStarted, onError, recordCount, user, planDraft, onPlanDraftApplied }) {
   const ownerName = user?.name || user?.username || "";
-  const [form, setForm] = useState(() => ({ ...defaultForm, owner_name: ownerName }));
+  const [form, setForm] = useState(() => mergePlanDraft({ ...defaultForm, owner_name: ownerName }, planDraft, ownerName));
   const [showExtraFields, setShowExtraFields] = useState(false);
   const [showFlowRef, setShowFlowRef] = useState(false);
-  const [relationshipTouched, setRelationshipTouched] = useState(false);
+  const [relationshipTouched, setRelationshipTouched] = useState(Boolean(planDraft));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const stageTabsRef = useRef(null);
+
+  // 推进方案带入：合并进表单后立刻消费掉，避免下次进页重复套用
+  useEffect(() => {
+    if (!planDraft) return;
+    setForm((prev) => mergePlanDraft(prev, planDraft, ownerName));
+    setRelationshipTouched(true);
+    onPlanDraftApplied?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planDraft]);
+
+  const planTraining = form.plan_training;
 
   const isOpportunity = form.training_type === OPPORTUNITY_MODE;
   const stageIndex = Math.max(0, opportunityStages.findIndex((item) => item.name === form.stage));
@@ -147,6 +171,40 @@ export default function StartTraining({ onStarted, onError, recordCount, user })
           <p className="small">完成训练后自动保存</p>
         </div>
       </div>
+
+      {planTraining && (
+        <div className="plan-focus-bar">
+          <div className="section-title">
+            <h4>来自推进方案</h4>
+            <span className="tag">训练焦点</span>
+          </div>
+          {planTraining.plan_summary ? <p className="hint">{planTraining.plan_summary}</p> : null}
+          <div className="plan-focus-grid">
+            <div>
+              <span>优先推进动作</span>
+              <p>{planTraining.primary_action || "—"}</p>
+            </div>
+            <div>
+              <span>必须问清</span>
+              <p>{planTraining.must_ask || "—"}</p>
+            </div>
+          </div>
+          {!!planTraining.checklist?.length && (
+            <details className="plan-focus-details">
+              <summary>执行清单（{planTraining.checklist.length}）</summary>
+              <ol>
+                {planTraining.checklist.map((item, index) => (
+                  <li key={index}>
+                    <b>{item.title}</b>
+                    <p>{item.detail}</p>
+                    {item.due ? <em>{item.due}</em> : null}
+                  </li>
+                ))}
+              </ol>
+            </details>
+          )}
+        </div>
+      )}
 
       <form className="setup-canvas" onSubmit={openConfirm}>
         <section className="flow-section">
@@ -365,6 +423,14 @@ export default function StartTraining({ onStarted, onError, recordCount, user })
                 <span>背景摘要</span>
                 <p>{form.background}</p>
               </div>
+              {form.plan_training && (
+                <div className="confirm-plan-focus">
+                  <span>训练焦点</span>
+                  <p>{form.plan_training.plan_summary}</p>
+                  <p>优先推进动作：{form.plan_training.primary_action}</p>
+                  <p>必须问清：{form.plan_training.must_ask}</p>
+                </div>
+              )}
             </div>
             <div className="confirm-actions">
               <button type="button" className="secondary" onClick={() => setShowConfirm(false)} disabled={isSubmitting}>返回修改</button>

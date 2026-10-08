@@ -8842,6 +8842,109 @@ fieldset:disabled button:hover {
   white-space: pre-wrap;
 }
 
+.confirm-plan-focus {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid #c5d8f7;
+  border-radius: 10px;
+  background: #f4f8ff;
+}
+
+.confirm-plan-focus span {
+  color: #1a73e8;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.confirm-plan-focus p {
+  margin: 6px 0 0;
+  color: #30343b;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.opportunity-train-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.opportunity-train-actions .hint {
+  margin: 0;
+  color: #647086;
+  font-size: 12.5px;
+}
+
+.plan-focus-bar {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 14px 16px;
+  border: 1px solid rgba(204, 220, 247, 0.92);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(246, 250, 255, 0.94), rgba(255, 255, 255, 0.92));
+}
+
+.plan-focus-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.plan-focus-grid > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.plan-focus-grid span {
+  color: #647086;
+  font-size: 11.5px;
+  font-weight: 720;
+}
+
+.plan-focus-grid p {
+  margin: 0;
+  color: #263041;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.plan-focus-details summary {
+  cursor: pointer;
+  color: #1a73e8;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.plan-focus-details ol {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.plan-focus-details li {
+  color: #435066;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.plan-focus-details li b {
+  color: #263041;
+}
+
+.plan-focus-details li p {
+  margin: 2px 0 0;
+}
+
+.plan-focus-details li em {
+  color: #7a8494;
+  font-size: 11px;
+  font-style: normal;
+}
+
 .confirm-actions {
   display: flex;
   justify-content: flex-end;

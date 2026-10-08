@@ -120,6 +120,193 @@ def _knowledge_text(items: list[KnowledgeItem]) -> str:
     return "\n".join(lines)
 
 
+def _as_str(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, bool):
+        return ""
+    if isinstance(value, (int, float)):
+        return str(value)
+    return str(value).strip()
+
+
+def _as_str_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        text = value.strip()
+        return [text] if text else []
+    if isinstance(value, (list, tuple)):
+        items: list[str] = []
+        for item in value:
+            if isinstance(item, dict):
+                text = _as_str(item.get("text") or item.get("title") or item.get("name") or item.get("content"))
+            else:
+                text = _as_str(item)
+            if text:
+                items.append(text)
+        return items
+    text = _as_str(value)
+    return [text] if text else []
+
+
+def _plan_checklist_items(value: Any) -> list[dict[str, str]]:
+    items: list[dict[str, str]] = []
+    raw = value if isinstance(value, (list, tuple)) else []
+    for item in raw:
+        if isinstance(item, dict):
+            title = _as_str(item.get("title") or item.get("name"))
+            detail = _as_str(item.get("detail") or item.get("content") or item.get("task"))
+            due = _as_str(item.get("due") or item.get("deadline") or item.get("time"))
+            if title or detail:
+                items.append({"title": title, "detail": detail, "due": due})
+        else:
+            text = _as_str(item)
+            if text:
+                items.append({"title": text, "detail": "", "due": ""})
+    return items
+
+
+def _plan_focus_score_items(value: Any) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    raw = value if isinstance(value, (list, tuple)) else []
+    for item in raw:
+        if isinstance(item, dict):
+            name = _as_str(item.get("name"))
+            if not name:
+                continue
+            raw_value = item.get("value", "")
+            if isinstance(raw_value, bool):
+                score_value: Any = ""
+            elif isinstance(raw_value, (int, float)):
+                score_value = int(raw_value)
+            elif isinstance(raw_value, str):
+                score_value = raw_value.strip()
+            else:
+                score_value = _as_str(raw_value)
+            items.append({"name": name, "value": score_value, "reason": _as_str(item.get("reason"))})
+        else:
+            text = _as_str(item)
+            if text:
+                items.append({"name": text, "value": "", "reason": ""})
+    return items
+
+
+def _plan_training_context(session: Any) -> dict:
+    """从 setup_context.plan_training 读取推进方案训练焦点，列表/字符串/缺省均容错。"""
+    empty = {
+        "source_session_id": None,
+        "plan_summary": "",
+        "primary_action": "",
+        "must_ask": "",
+        "strategies": [],
+        "checklist": [],
+        "focus_scores": [],
+    }
+    if isinstance(session, dict):
+        setup = session.get("setup_context")
+    else:
+        setup = getattr(session, "setup_context", None)
+    if not isinstance(setup, dict):
+        return dict(empty)
+    plan = setup.get("plan_training")
+    if not isinstance(plan, dict):
+        return dict(empty)
+
+    source_id = plan.get("source_session_id")
+    if isinstance(source_id, bool):
+        source_id = None
+    elif isinstance(source_id, int):
+        pass
+    else:
+        try:
+            source_id = int(source_id) if source_id is not None and source_id != "" else None
+        except (TypeError, ValueError):
+            source_id = None
+
+    return {
+        "source_session_id": source_id,
+        "plan_summary": _as_str(plan.get("plan_summary")),
+        "primary_action": _as_str(plan.get("primary_action")),
+        "must_ask": _as_str(plan.get("must_ask")),
+        "strategies": _as_str_list(plan.get("strategies")),
+        "checklist": _plan_checklist_items(plan.get("checklist")),
+        "focus_scores": _plan_focus_score_items(plan.get("focus_scores")),
+    }
+
+
+def _plan_training_active(plan: dict) -> bool:
+    return bool(
+        (plan or {}).get("plan_summary")
+        or (plan or {}).get("primary_action")
+        or (plan or {}).get("must_ask")
+        or (plan or {}).get("strategies")
+        or (plan or {}).get("checklist")
+        or (plan or {}).get("focus_scores")
+    )
+
+
+def _plan_focus_lines(plan: dict) -> list[str]:
+    """把 plan_training 格式化成「优先推进动作 / 必须问清 / …」要点行。"""
+    lines: list[str] = []
+    if plan.get("primary_action"):
+        lines.append(f"优先推进动作：{plan['primary_action']}")
+    if plan.get("must_ask"):
+        lines.append(f"必须问清：{plan['must_ask']}")
+    strategies = plan.get("strategies") or []
+    if strategies:
+        lines.append(f"交涉策略：{'；'.join(strategies)}")
+    checklist = plan.get("checklist") or []
+    if checklist:
+        parts = []
+        for item in checklist:
+            title = (item.get("title") or "").strip()
+            detail = (item.get("detail") or "").strip()
+            due = (item.get("due") or "").strip()
+            text = title
+            if detail:
+                text = f"{text}（{detail}）" if text else detail
+            if due:
+                text = f"{text}｜{due}" if text else due
+            if text:
+                parts.append(text)
+        if parts:
+            lines.append(f"执行清单：{'；'.join(parts)}")
+    focus_scores = plan.get("focus_scores") or []
+    if focus_scores:
+        parts = []
+        for item in focus_scores:
+            name = (item.get("name") or "").strip()
+            value = item.get("value", "")
+            reason = (item.get("reason") or "").strip()
+            text = name
+            if value != "" and value is not None:
+                text = f"{text}（{value}）" if text else str(value)
+            if reason:
+                text = f"{text}：{reason}" if text else reason
+            if text:
+                parts.append(text)
+        if parts:
+            lines.append(f"薄弱维度：{'；'.join(parts)}")
+    return lines
+
+
+def _plan_customer_block(plan: dict) -> str:
+    if not _plan_training_active(plan):
+        return ""
+    lines = ["# 本次针对推进方案的训练焦点", "本轮是针对推进方案的针对性训练，客户出题必须围绕以下焦点施压："]
+    for focus_line in _plan_focus_lines(plan):
+        lines.append(f"- {focus_line}")
+    lines.append(
+        "出题契约补充：客户要围绕这些焦点施压——尤其是「必须问清」的点，"
+        "业务员若不问到位就不要轻易放行下一步；对薄弱维度对应的话题继续追问。"
+        "语气仍是客户，不要替业务员说话。"
+    )
+    return "\n".join(lines) + "\n\n"
+
+
 def _customer_profile_text(session: TrainingSession) -> str:
     difficulty = getattr(session, "customer_difficulty", "") or "标准"
     personality = getattr(session, "customer_personality", "") or "谨慎型"
@@ -161,6 +348,7 @@ class LLMClient:
         """客户出题契约 prompt，customer_reply 与 customer_reply_stream 共用。"""
         cards_text = _product_cards_text(session, knowledge)
         cards_block = f"\n{cards_text}" if cards_text else ""
+        plan_block = _plan_customer_block(_plan_training_context(session))
         return (
             "# 角色\n"
             "你是真实客户，不是业务员。你是广东珠三角印染厂的采购/技术/厂长，正在和一家纺织助剂供应商的业务员对话。\n"
@@ -205,6 +393,7 @@ class LLMClient:
             f"客户公司：{session.customer_name} / {session.customer_type}\n"
             f"训练类型：{session.training_type}\n商机阶段：{session.stage}\n训练目标：{session.goal}\n"
             f"背景：{session.background}\n\n"
+            f"{plan_block}"
             "# 产品与工艺资料（出题依据：必须从中挑具体点追问；不要向业务员背诵原文）\n"
             f"{_knowledge_text(knowledge)}"
             f"{cards_block}"
@@ -309,6 +498,15 @@ class LLMClient:
         transcript = "\n".join(f"{m.role}: {m.content}" for m in messages[-8:])
         cards_text = _product_cards_text(session, knowledge)
         cards_block = f"\n产品卡（型号与边界必须对齐）：\n{cards_text}" if cards_text else ""
+        plan = _plan_training_context(session)
+        plan_block = ""
+        if _plan_training_active(plan):
+            focus_lines = _plan_focus_lines(plan)
+            plan_block = (
+                "# 本次针对推进方案的训练焦点（有知识库仍知识库优先，但话术要覆盖这些焦点）\n"
+                + "\n".join(f"- {line}" for line in focus_lines)
+                + "\n优先围绕「必须问清」和「优先推进动作」给出可开口的推进话术。\n"
+            )
         prompt = (
             "# 角色\n"
             "你是纺织助剂销售话术教练。请给业务员一条可直接说出口的下一句回复。\n\n"
@@ -326,6 +524,7 @@ class LLMClient:
             f"客户最后一句：{last_customer}\n"
             f"训练类型：{session.training_type}\n阶段：{session.stage}\n目标：{session.goal}\n"
             f"客户：{session.customer_name} / {session.customer_type}\n背景：{session.background}\n"
+            f"{plan_block}"
             f"知识库：\n{_knowledge_text(knowledge)}\n"
             f"{cards_block}\n"
             f"最近对话：\n{transcript}"
@@ -371,6 +570,8 @@ class LLMClient:
         """LLM 不可用时：优先用知识条目 recommended 拼 1-2 句可说回复，不再给通用套话。"""
         speakable: list[str] = []
         source = ""
+        plan = _plan_training_context(session)
+        plan_active = _plan_training_active(plan)
         for item in knowledge or []:
             rec = (getattr(item, "recommended", "") or "").strip()
             if not rec:
@@ -383,19 +584,38 @@ class LLMClient:
                 source = f"依据：改写自《{name}》推荐话术"
             if len(speakable) >= 2:
                 break
-        if not speakable:
+        if speakable:
+            content = speakable[0]
+            if len(speakable) > 1:
+                content = f"{speakable[0]}另外，{speakable[1]}"
             goal = getattr(session, "goal", "") or ""
-            return {
-                "content": "您刚提到的这点我记下了，我先把关键条件和边界跟您对齐，再约时间把下一步定下来。",
-                "source": f"依据：围绕训练目标「{goal}」的通用推进动作" if goal else "",
-            }
-        content = speakable[0]
-        if len(speakable) > 1:
-            content = f"{speakable[0]}另外，{speakable[1]}"
+            if goal and source:
+                source = f"{source}；目标：{goal}"
+            return {"content": content, "source": source}
+        if plan_active:
+            must_ask = plan.get("must_ask") or ""
+            primary_action = plan.get("primary_action") or ""
+            goal = getattr(session, "goal", "") or ""
+            if must_ask and primary_action:
+                content = f"您刚才提到的点我记下了。关于{must_ask}，我先把条件问清对齐，再按「{primary_action}」把下一步定下来。"
+                source = f"依据：围绕推进方案「必须问清」与「优先推进动作」的推进话术"
+            elif must_ask:
+                content = f"关于{must_ask}，我先把关键条件问清对齐，确认完我们再约时间定下一步。"
+                source = "依据：围绕推进方案「必须问清」的推进话术"
+            elif primary_action:
+                content = f"下一步我建议按「{primary_action}」推进，先把责任人、时间和条件定清，您看这样安排行吗？"
+                source = "依据：围绕推进方案「优先推进动作」的推进话术"
+            else:
+                content = "您刚提到的这点我记下了，我先把推进方案里的关键条件和边界跟您对齐，再约时间把下一步定下来。"
+                source = "依据：围绕推进方案焦点的推进动作"
+            if goal:
+                source = f"{source}；目标：{goal}" if source else f"依据：目标：{goal}"
+            return {"content": content, "source": source}
         goal = getattr(session, "goal", "") or ""
-        if goal and source:
-            source = f"{source}；目标：{goal}"
-        return {"content": content, "source": source}
+        return {
+            "content": "您刚提到的这点我记下了，我先把关键条件和边界跟您对齐，再约时间把下一步定下来。",
+            "source": f"依据：围绕训练目标「{goal}」的通用推进动作" if goal else "",
+        }
 
     def _recommended_to_speech(self, rec: str) -> str:
         """把教练指令式 recommended 改写成对客可说的口语短句。"""
@@ -600,6 +820,18 @@ class LLMClient:
         )
         cards_text = _product_cards_text(session, knowledge)
         cards_block = f"\n产品卡（选型/边界/价值参考）：\n{cards_text}\n" if cards_text else ""
+        plan = _plan_training_context(session)
+        plan_active = _plan_training_active(plan)
+        plan_block = ""
+        if plan_active:
+            focus_lines = _plan_focus_lines(plan)
+            plan_block = (
+                "\n## 本轮是「针对推进方案的针对性训练」\n"
+                "summary / 建议必须对照下列推进方案要点，判断业务员有没有真正推进一步"
+                "（尤其是「必须问清」是否问到位、「优先推进动作」是否落地），不要泛泛评价。\n"
+                + "\n".join(f"- {line}" for line in focus_lines)
+                + "\n- focus_scores 仅作评分参考（偏向薄弱维度的原因说明），不要强制改分，仍按原有 JSON 字段与评分规则输出。\n"
+            )
 
         common = (
             "你是纺织助剂行业销售培训教练（宏昊化工场景：固色剂/湿摩擦提升剂/硅油/前后整理助剂）。"
@@ -629,6 +861,7 @@ class LLMClient:
             f"{score_formula}\n\n"
             f"训练类型：{session.training_type}\n客户：{session.customer_name} / {session.customer_type}\n"
             f"阶段：{session.stage}\n目标：{session.goal}\n背景：{session.background}\n"
+            f"{plan_block}"
             f"知识库：\n{_knowledge_text(knowledge)}\n"
             f"{cards_block}"
             f"对话或输入：\n{transcript}\n"
@@ -655,6 +888,13 @@ class LLMClient:
             + "alternatives 给 2-3 条替代话术，必须可直接用于下一次客户沟通，含具体型号、工艺条件、测试标准或认证价值；"
             + "示例味道：「按您说的水温偏高，建议先用 HT-790 做 2g/L 浸轧小样，日标测湿擦，我们出测试报告再谈大货」。\n"
             + "checklist 给 3 个下一轮训练动作，写清可执行条件（如补问水质水温、约工程师定小样条件、准备测试报告）。\n"
+            + (
+                "若上方存在「针对推进方案的针对性训练」：summary / risk_lines / alternatives / checklist 必须对照 must_ask、"
+                "primary_action、checklist 判断有没有推进一步（例如 must_ask 是否问到位、primary_action 是否被推进），"
+                "不要写成与推进方案无关的泛泛评价。\n"
+                if plan_active
+                else ""
+            )
         )
 
     def _build_scoring_criteria(
@@ -1115,7 +1355,7 @@ class LLMClient:
         return max(1, min(maximum, score))
 
     def _mock_customer_reply(self, session: TrainingSession, messages: list[TrainingMessage]) -> str:
-        sales_turns = [m for m in messages if m.role == "sales"]
+        sales_turns = [m for m in messages if self._msg_field(m, "role", "") == "sales"]
         concern = getattr(session, "customer_concern", "") or "供应稳定"
         difficulty = getattr(session, "customer_difficulty", "") or "标准"
         personality = getattr(session, "customer_personality", "") or "谨慎型"
@@ -1148,6 +1388,25 @@ class LLMClient:
             pressure = "最好能给到数据、案例或测试条件。"
         elif personality == "压价型":
             pressure = "如果价格没有空间，后面就不用谈了。"
+
+        plan = _plan_training_context(session)
+        if _plan_training_active(plan) and not self._is_opportunity(session):
+            must_ask = plan.get("must_ask") or ""
+            primary_action = plan.get("primary_action") or ""
+            focus = must_ask or primary_action
+            if len(sales_turns) <= 1:
+                if must_ask:
+                    return f"[buyer]{opening}。特别是「{must_ask}」，你先说清楚，别急着往下走。"
+                return f"[buyer]{opening}。{pressure}"
+            if len(sales_turns) == 2:
+                if must_ask and primary_action:
+                    return f"[buyer]「{must_ask}」你还是没问到位，「{primary_action}」怎么落我这边没法放行。"
+                if must_ask:
+                    return f"[buyer]「{must_ask}」我还没听明白，你先把这个说清楚再谈下一步。"
+                return f"[buyer]围绕「{primary_action}」你准备怎么安排？条件、时间、谁负责，说清楚。"
+            if focus:
+                return f"[buyer]要继续推进，先把「{focus}」相关条件和责任人说清，否则我这边很难排优先级。"
+            return f"[buyer]如果要继续推进，请把{concern}相关的条件、时间和负责人说清楚，否则我这边很难排优先级。"
 
         if len(sales_turns) <= 1:
             return f"[buyer]{opening}。{pressure}"
@@ -1300,10 +1559,15 @@ class LLMClient:
         if self._is_opportunity(session):
             return self._mock_opportunity_report(session, knowledge)
         source = knowledge[0].source_name if knowledge else "模拟销售 SOP"
-        
+        plan = _plan_training_context(session)
+        plan_active = _plan_training_active(plan)
+        must_ask = plan.get("must_ask") or ""
+        primary_action = plan.get("primary_action") or ""
+        plan_summary = plan.get("plan_summary") or ""
+
         # 分析对话内容
-        sales_messages = [m for m in messages if m.role == "sales"]
-        customer_messages = [m for m in messages if m.role == "customer"]
+        sales_messages = [m for m in messages if self._msg_field(m, "role", "") == "sales"]
+        customer_messages = [m for m in messages if self._msg_field(m, "role", "") == "customer"]
         sales_turns = len(sales_messages)
         
         # 提取关键信息
@@ -1314,7 +1578,7 @@ class LLMClient:
         
         # 分析销售人员的表现
         for msg in sales_messages:
-            content = msg.content.lower()
+            content = str(self._msg_field(msg, "content", "")).lower()
             # 检查是否有下一步动作
             if any(keyword in content for keyword in ["下一步", "接下来", "安排", "约定", "确认", "安排"]):
                 has_next_step = True
@@ -1420,7 +1684,21 @@ class LLMClient:
             summary = "能明确下一步动作，但价值表达和需求澄清还需要加强。"
         elif has_value_expression:
             summary = "能表达价值，但缺少明确的下一步动作，建议把对话收敛到具体行动。"
-        
+
+        if plan_active:
+            focus_bits = []
+            if must_ask:
+                focus_bits.append(f"必须问清「{must_ask}」")
+            if primary_action:
+                focus_bits.append(f"推进「{primary_action}」")
+            focus_text = "，".join(focus_bits) or "推进方案焦点"
+            if sales_turns < 3:
+                summary = f"本轮是针对推进方案的针对性训练，对话轮次不足；请对照{focus_text}完成问清与推进后再复盘。"
+            elif has_next_step:
+                summary = f"本轮是针对推进方案的针对性训练，已有下一步动作，但仍需对照{focus_text}确认是否真正推进一步。"
+            else:
+                summary = f"本轮是针对推进方案的针对性训练，尚未对照{focus_text}推进一步，建议先把方案焦点问透再收下一步。"
+
         # 生成个性化亮点
         good_lines = []
         if has_next_step:
@@ -1431,7 +1709,9 @@ class LLMClient:
             good_lines.append("能有效回应客户异议，保持对话流畅。")
         if not good_lines:
             good_lines.append("能保持对话连贯性，回应客户问题。")
-        
+        if plan_active and must_ask and has_clarification:
+            good_lines.append(f"能围绕「{must_ask}」追问澄清，贴合推进方案要求。")
+
         # 生成个性化风险点
         risk_lines = []
         if not has_next_step:
@@ -1442,7 +1722,14 @@ class LLMClient:
             risk_lines.append("异议处理不够充分，可能影响客户决策。")
         if not risk_lines:
             risk_lines.append("后续保持沟通这类说法太虚，容易让商机继续停滞。")
-        
+        if plan_active:
+            if must_ask and not has_clarification:
+                risk_lines.insert(0, f"未问清「{must_ask}」，业务员若不问到位不应放行下一步。")
+            if primary_action and not has_next_step:
+                risk_lines.insert(0, f"未推进「{primary_action}」，推进方案焦点尚未落地。")
+            if must_ask and has_clarification and primary_action and has_next_step and len(risk_lines) < 2:
+                risk_lines.append(f"对照「{must_ask}」/「{primary_action}」还需把责任人、时间、条件收成可跟进动作。")
+
         # 生成个性化建议
         alternatives = []
         if not has_next_step:
@@ -1453,7 +1740,12 @@ class LLMClient:
             alternatives.append("建议回应异议时提供更多证据：我们有第三方检测报告和客户案例。")
         if not alternatives:
             alternatives.append("建议把下一步收敛为明确的人员、时间和条件。")
-        
+        if plan_active:
+            if must_ask:
+                alternatives.insert(0, f"建议改成可开口的推进话术：关于「{must_ask}」，我先把条件跟您对齐，确认完再约下一步时间。")
+            if primary_action and not has_next_step:
+                alternatives.append(f"建议按「{primary_action}」收成具体人/时间/条件，不要停留在保持沟通。")
+
         # 生成个性化任务清单
         checklist = []
         if not has_next_step:
@@ -1464,7 +1756,18 @@ class LLMClient:
             checklist.append("准备异议处理话术")
         checklist.append("约定下一次沟通时间")
         checklist.append("补充测试或成本依据")
-        
+        if plan_active:
+            plan_items = []
+            if must_ask:
+                plan_items.append(f"问清「{must_ask}」")
+            if primary_action:
+                plan_items.append(f"推进「{primary_action}」")
+            for item in plan.get("checklist") or []:
+                title = (item.get("title") or "").strip()
+                if title:
+                    plan_items.append(title)
+            checklist = plan_items + checklist
+
         return {
             "overall_score": overall_score,
             "summary": summary,
