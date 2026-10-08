@@ -16,6 +16,7 @@ from app.services.llm_providers import (
     resolve_provider,
 )
 from app.services.scoring import (
+    MIN_SALES_TURNS_FOR_FULL_SCORE,
     build_score_formula_text,
     build_scoring_criteria_text,
     calculate_overall_score,
@@ -265,6 +266,7 @@ class LLMClient:
         knowledge: list[KnowledgeItem],
     ) -> dict:
         config = get_effective_llm_config()
+        is_opportunity = self._is_opportunity(session)
         if not self._configured(config):
             report = self._mock_report(session, messages, knowledge)
             report["llm_status"] = "mock:not_configured"
@@ -272,19 +274,26 @@ class LLMClient:
 
         prompt = self._report_prompt(session, messages, knowledge)
         try:
-            data = await self._chat([{"sender_type": "USER", "text": prompt}], config, max_tokens=2048)
+            data = await self._chat([{"sender_type": "USER", "text": prompt}], config, max_tokens=4096)
             llm_status = "llm"
         except httpx.HTTPError as exc:
             data = ""
             llm_status = f"mock:http_error:{exc.__class__.__name__}"
-        try:
-            parsed = json.loads(self._json_text(data))
-        except Exception:
+        parsed = self._parse_json_object(data)
+        if parsed is None and data.strip():
+            repaired = await self._repair_json(data, config)
+            parsed = self._parse_json_object(repaired)
+            if parsed is not None:
+                llm_status = "llm:repaired"
+        if parsed is None:
             parsed = self._mock_report(session, messages, knowledge)
             parsed["llm_status"] = f"mock:invalid_json:{llm_status}"
         else:
             parsed["llm_status"] = llm_status
-        return self._normalize_report(parsed, session, knowledge)
+        normalized = self._normalize_report(parsed, session, knowledge)
+        # 内部状态不进引用依据，只挂在独立字段供日志/调试
+        normalized["llm_status"] = parsed.get("llm_status", llm_status)
+        return normalized
 
     async def suggested_reply(
         self,
@@ -580,10 +589,15 @@ class LLMClient:
         customer_messages = [m for m in messages if m.role == "customer"]
         sales_turns = len(sales_messages)
         avg_sales_length = sum(len(m.content) for m in sales_messages) / max(sales_turns, 1)
-        
+        is_opportunity = self._is_opportunity(session)
+
         # 构建详细的评分标准
-        scoring_criteria = self._build_scoring_criteria(session, sales_turns, avg_sales_length)
-        score_formula = build_score_formula_text(getattr(session, "goal", "") or "")
+        scoring_criteria = self._build_scoring_criteria(
+            session, sales_turns, avg_sales_length, is_opportunity=is_opportunity
+        )
+        score_formula = build_score_formula_text(
+            getattr(session, "goal", "") or "", is_opportunity=is_opportunity
+        )
         cards_text = _product_cards_text(session, knowledge)
         cards_block = f"\n产品卡（选型/边界/价值参考）：\n{cards_text}\n" if cards_text else ""
 
@@ -623,11 +637,14 @@ class LLMClient:
             return (
                 common
                 + "商机推进教练输出要求：\n"
-                + "summary 写成当前商机判断，不超过 80 字。\n"
-                + "good_lines 写 2 条当前有利条件或可利用抓手。\n"
-                + "risk_lines 写 3 条关键风险，必须结合阶段、关键人、阻碍或最近沟通结果。\n"
-                + "alternatives 写 3 条不同角度的交涉策略：卡点复述、关键人推进、条件换承诺；每条要能直接照着说或照着做。\n"
-                + "checklist 写 4 个待办对象，格式为 {\"title\":\"事项\",\"detail\":\"执行要点\",\"due\":\"1 天内/2 天内/3 天内/5 天内\"}。\n"
+                + "summary 写成当前商机判断，必须结合阶段、关键阻碍、关键人和最近沟通结果，不超过 80 字；禁止写对话轮次。\n"
+                + "good_lines 写 2 条当前有利条件或可利用抓手（可引用最近沟通结果、已有关系、产品/认证优势）。\n"
+                + "risk_lines 写 3 条关键风险，必须结合阶段、关键人、阻碍或最近沟通结果，写清风险后果。\n"
+                + "alternatives 写 3 条不同角度的交涉策略：卡点复述、关键人推进、条件换承诺；"
+                + "每条写成可直接照着说或照着做的完整句子，要带上客户名/阻碍/里程碑等具体信息。\n"
+                + "checklist 写 4 个待办对象，格式为 {\"title\":\"具体事项\",\"detail\":\"执行要点（谁做什么、要什么材料/确认什么）\",\"due\":\"1 天内/2 天内/3 天内/5 天内\"}；"
+                + "title 不要写成“确认下一步节点”这类空标题，要写清具体对象（如“约品牌端标准确认人对齐测试口径”）。\n"
+                + "scores 的 reason 必须引用商机背景中的具体信息，禁止模板套话。\n"
             )
         return (
             common
@@ -645,6 +662,7 @@ class LLMClient:
         session: TrainingSession,
         sales_turns: int,
         avg_sales_length: float,
+        is_opportunity: bool = False,
     ) -> str:
         """评分标准文案来自 scoring 模块（与权重同源）。
 
@@ -656,13 +674,19 @@ class LLMClient:
                 avg_sales_length=avg_sales_length,
                 goal=session.goal,
                 stage=session.stage,
+                is_opportunity=is_opportunity,
             )
         except TypeError:
             # 兼容签名变化（新增/改名参数）：按位置参数调用，或退回最小参数集
             try:
-                return build_scoring_criteria_text(sales_turns, avg_sales_length, session.goal, session.stage)
+                return build_scoring_criteria_text(
+                    sales_turns, avg_sales_length, session.goal, session.stage, is_opportunity
+                )
             except TypeError:
-                return build_scoring_criteria_text(sales_turns, avg_sales_length, "", "")
+                try:
+                    return build_scoring_criteria_text(sales_turns, avg_sales_length, session.goal, session.stage)
+                except TypeError:
+                    return build_scoring_criteria_text(sales_turns, avg_sales_length, "", "")
 
     def _configured(self, config: EffectiveLLMConfig) -> bool:
         return config.configured
@@ -705,6 +729,90 @@ class LLMClient:
     def _anthropic_messages(self, messages: list[dict]) -> tuple[str, list[dict]]:
         return _anthropic_messages(messages)
 
+    def _is_opportunity(self, session: TrainingSession) -> bool:
+        return (getattr(session, "training_type", "") or "") == "商机推进教练"
+
+    def _opportunity_context(self, session: TrainingSession) -> dict[str, str]:
+        """从 setup_context / background 抽取商机字段，供生成个性化推进方案。"""
+        setup = getattr(session, "setup_context", None) or {}
+        opp = setup.get("opportunity_setup") if isinstance(setup, dict) else None
+        if not isinstance(opp, dict):
+            opp = {}
+        background = getattr(session, "background", "") or ""
+        labels = {
+            "last_contact": "最近一次沟通结果",
+            "decision_blocker": "关键阻碍",
+            "next_milestone": "下一步里程碑",
+            "stakeholder": "关键人参与情况",
+            "product": "产品",
+        }
+        parsed: dict[str, str] = {}
+        for key, label in labels.items():
+            match = re.search(rf"{label}：([^\n]+)", background)
+            parsed[key] = match.group(1).strip() if match else ""
+        return {
+            "customer_name": getattr(session, "customer_name", "") or "当前商机",
+            "stage": getattr(session, "stage", "") or "",
+            "goal": getattr(session, "goal", "") or "",
+            "last_contact": str(opp.get("last_contact") or parsed.get("last_contact") or "").strip(),
+            "decision_blocker": str(opp.get("decision_blocker") or parsed.get("decision_blocker") or "").strip(),
+            "next_milestone": str(opp.get("next_milestone") or parsed.get("next_milestone") or "").strip(),
+            "stakeholder": str(opp.get("stakeholder") or parsed.get("stakeholder") or "").strip(),
+            "product": parsed.get("product") or "",
+            "background": background,
+        }
+
+    async def _repair_json(self, raw: str, config: EffectiveLLMConfig) -> str:
+        """JSON 解析失败时，让模型把返回修成合法 JSON，尽量保住生成内容。"""
+        prompt = (
+            "下面内容本应是合法 JSON 对象，但现在无法解析。"
+            "请修复为合法 JSON 对象并只输出 JSON，不要解释、不要 Markdown。\n\n"
+            + _excerpt(raw, 6000)
+        )
+        try:
+            return await self._chat([{"sender_type": "USER", "text": prompt}], config, max_tokens=4096)
+        except httpx.HTTPError:
+            return ""
+
+    def _parse_json_object(self, text: str) -> dict[str, Any] | None:
+        if not text or not text.strip():
+            return None
+        candidates = [self._json_text(text)]
+        stripped = text.strip()
+        if stripped.startswith("```"):
+            stripped = stripped.removeprefix("```json").removeprefix("```").strip()
+            stripped = stripped.removesuffix("```").strip()
+            candidates.append(stripped)
+        start = stripped.find("{")
+        end = stripped.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            candidates.append(stripped[start : end + 1])
+        for candidate in candidates:
+            if not candidate:
+                continue
+            try:
+                data = json.loads(candidate)
+            except Exception:
+                continue
+            if isinstance(data, dict):
+                return data
+            if isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict) and any(k in item for k in ("summary", "scores", "overall_score")):
+                        return item
+        # 兜底：去掉尾逗号再试
+        for candidate in candidates:
+            if not candidate:
+                continue
+            cleaned = re.sub(r",\s*([}\]])", r"\1", candidate)
+            try:
+                data = json.loads(cleaned)
+            except Exception:
+                continue
+            if isinstance(data, dict):
+                return data
+        return None
+
     def _json_text(self, text: str) -> str:
         stripped = text.strip()
         if stripped.startswith("```"):
@@ -743,8 +851,9 @@ class LLMClient:
         session: TrainingSession,
         knowledge: list[KnowledgeItem],
     ) -> dict[str, Any]:
+        is_opportunity = self._is_opportunity(session)
         fallback = self._mock_report(session, [], knowledge)
-        source = knowledge[0].source_name if knowledge else "模拟销售 SOP"
+        source = knowledge[0].source_name if knowledge else ("商机推进规范" if is_opportunity else "模拟销售 SOP")
         source_reason = f"用于判断“{session.stage} / {session.goal}”场景下的推荐动作和禁用话术。"
 
         scores = data.get("scores")
@@ -753,7 +862,6 @@ class LLMClient:
         else:
             scores = [self._score_item(item, fallback["scores"][index]) for index, item in enumerate(scores[:7])]
 
-        # 硬约束在 LLM 评分后强制执行（工艺探询/推进动作/技术边界）
         sales_texts = [
             getattr(m, "content", "") or ""
             for m in (getattr(session, "messages", None) or [])
@@ -765,10 +873,12 @@ class LLMClient:
                 for m in (getattr(session, "messages", None) or [])
                 if (m.get("role") if isinstance(m, dict) else getattr(m, "role", "")) == "sales"
             ]
-        scores = enforce_hard_caps(scores, sales_texts)
+        # 商机推进方案没有业务员对话，不能用“没问水质/没下一步”打对话硬约束
+        if not is_opportunity:
+            scores = enforce_hard_caps(scores, sales_texts)
 
         # 重新计算overall_score，确保符合（可按 goal 调整的）权重规则
-        overall_score = self._calculate_overall_score(scores, session)
+        overall_score = self._calculate_overall_score(scores, session, is_opportunity=is_opportunity)
 
         knowledge_sources = {item.source_name for item in knowledge if item.source_name}
         citations = data.get("citations")
@@ -776,13 +886,16 @@ class LLMClient:
             citations = []
         else:
             citations = [self._citation_item(item, source, source_reason, knowledge_sources) for item in citations[:4]]
+        # 过滤内部状态类条目，不进用户可见引用依据
+        citations = [
+            item
+            for item in citations
+            if item.get("source") not in {"LLM 调用状态", "LLM调用状态"} and not str(item.get("source", "")).startswith("mock:")
+        ]
         if knowledge_sources and not any(item["source"] in knowledge_sources for item in citations):
             citations.insert(0, {"source": source, "reason": source_reason})
         if not citations:
             citations = [{"source": source, "reason": source_reason}]
-        status = self._text(data.get("llm_status"), "mock:normalized")
-        if status.startswith("mock:"):
-            citations.insert(0, {"source": "LLM 调用状态", "reason": status})
 
         normalized = {
             "overall_score": overall_score,
@@ -794,7 +907,7 @@ class LLMClient:
             "checklist": self._text_list(data.get("checklist"), fallback["checklist"], 3),
             "citations": citations,
         }
-        if session.training_type == "商机推进教练":
+        if is_opportunity:
             normalized = self._normalize_opportunity_report(normalized, session, knowledge)
         return normalized
 
@@ -802,6 +915,7 @@ class LLMClient:
         self,
         scores: list[dict[str, Any]],
         session: TrainingSession,
+        is_opportunity: bool = False,
     ) -> int:
         """总分由 scoring 模块统一计算（与 prompt 权重同源）。"""
         try:
@@ -809,9 +923,16 @@ class LLMClient:
                 [m for m in (getattr(session, "messages", None) or []) if getattr(m, "role", "") == "sales"]
             )
         except Exception:
-            sales_turns = 3
+            sales_turns = 3 if not is_opportunity else MIN_SALES_TURNS_FOR_FULL_SCORE
+        if is_opportunity and sales_turns <= 0:
+            sales_turns = MIN_SALES_TURNS_FOR_FULL_SCORE
         goal = getattr(session, "goal", "") or ""
-        return calculate_overall_score(scores, sales_turns=sales_turns, goal=goal)
+        return calculate_overall_score(
+            scores,
+            sales_turns=sales_turns,
+            goal=goal,
+            is_opportunity=is_opportunity,
+        )
 
     def _normalize_opportunity_report(
         self,
@@ -819,31 +940,101 @@ class LLMClient:
         session: TrainingSession,
         knowledge: list[KnowledgeItem],
     ) -> dict[str, Any]:
+        ctx = self._opportunity_context(session)
+        blocker = ctx.get("decision_blocker") or "当前关键阻碍"
+        milestone = ctx.get("next_milestone") or "下一步里程碑"
+        stakeholder = ctx.get("stakeholder") or "关键人"
+        customer = ctx.get("customer_name") or "客户"
+        goal = ctx.get("goal") or "推进商机"
+        product = ctx.get("product") or "现有方案"
+
         actions = self._text_list(data.get("alternatives"), [], 4)
-        checklist = self._text_list(data.get("checklist"), [], 4)
+        checklist = data.get("checklist") if isinstance(data.get("checklist"), list) else []
+        # 已是对象的 checklist 直接保留，不做标题覆盖
+        object_items = [item for item in checklist if isinstance(item, dict)]
+        string_items = [item for item in checklist if isinstance(item, str) and str(item).strip()]
+
         default_actions = [
-                f"把下一步收敛为“{session.goal}”对应的明确节点，不要只说保持沟通。",
-                "围绕当前关键阻碍设计一个具体问题，确认客户内部卡点。",
-                "补齐关键人参与情况，确认采购、技术和最终决策人的关注点。",
-                "把时间、人员、资料或测试条件写成一个明确的跟进动作。",
+            f"先复述「{blocker}」的卡点，再确认：这件事谁判断、何时反馈、我们要补什么材料？",
+            f"不要只跟单一联系人推进，按「{stakeholder}」拆出采购/技术/决策人的关注点，约齐对齐会。",
+            f"把补资料、试样或价格条件绑定到客户对「{milestone}」的明确承诺上。",
+            f"把时间、人员、资料或测试条件写成一个可跟进动作，服务目标「{goal}」。",
         ]
         if len(actions) < 4:
-            actions.extend(default_actions[len(actions):])
-        if len(checklist) < 3:
-            checklist = [
-                {"title": "确认下一步节点", "detail": actions[0], "due": "1 天内"},
-                {"title": "拆解关键阻碍", "detail": actions[1], "due": "2 天内"},
-                {"title": "补齐关键人", "detail": actions[2], "due": "3 天内"},
-                {"title": "固化跟进动作", "detail": actions[3], "due": "5 天内"},
-            ]
-        else:
-            checklist = [self._todo_item(item, index, actions) for index, item in enumerate(checklist[:4])]
+            actions.extend(default_actions[len(actions) :])
+        actions = actions[:4]
+
+        default_todos = [
+            {
+                "title": f"约齐「{blocker}」决策人",
+                "detail": f"确认谁判断、谁给反馈；把{stakeholder}写进参会名单，约 30 分钟对齐「{milestone}」。",
+                "due": "1 天内",
+            },
+            {
+                "title": f"拆解「{milestone}」验收条件",
+                "detail": f"明确材料清单、测试口径和时间点，避免目标「{goal}」停留在口号。",
+                "due": "2 天内",
+            },
+            {
+                "title": f"补齐{product}证据包",
+                "detail": "准备小样条件、测试标准（日标/国标）和第三方报告/客户案例，支撑替换与价格谈判。",
+                "due": "3 天内",
+            },
+            {
+                "title": f"固化对{customer}的跟进升级",
+                "detail": "设定下次触达时间；无反馈则升级到能拍板的人，不把跟进停留在“保持沟通”。",
+                "due": "5 天内",
+            },
+        ]
+
+        merged_todos: list[dict[str, str]] = []
+        generic_titles = {"确认下一步节点", "拆解关键阻碍", "补齐关键人", "固化跟进动作"}
+        for index in range(4):
+            if index < len(object_items):
+                item = object_items[index]
+                detail = self._text(
+                    item.get("detail") or item.get("content") or item.get("task"),
+                    default_todos[index]["detail"],
+                )
+                raw_title = self._text(item.get("title") or item.get("name"), "")
+                title = (
+                    raw_title
+                    if (len(raw_title) >= 6 and raw_title not in generic_titles)
+                    else default_todos[index]["title"]
+                )
+                merged_todos.append(
+                    {
+                        "title": title,
+                        "detail": detail,
+                        "due": self._text(item.get("due") or item.get("deadline") or item.get("time"), default_todos[index]["due"]),
+                    }
+                )
+            elif index < len(string_items):
+                merged_todos.append(
+                    {
+                        "title": default_todos[index]["title"],
+                        "detail": self._text(string_items[index], default_todos[index]["detail"]),
+                        "due": default_todos[index]["due"],
+                    }
+                )
+            else:
+                merged_todos.append(default_todos[index])
+
+        stage_label = ctx.get("stage") or getattr(session, "stage", "") or "当前"
         data["summary"] = self._text(
             data.get("summary"),
-            f"{session.customer_name} 当前处于“{session.stage}”阶段，建议优先把下一步推进动作收敛到明确的人、时间和条件。",
+            f"{customer}处于“{stage_label}”阶段，卡在“{blocker}”，"
+            f"下一步应围绕“{milestone}”把人、时间和条件一次定清。",
         )
+        # summary 里若误写对话轮次，替换掉
+        if "对话轮次不足" in data["summary"]:
+            data["summary"] = (
+                f"{customer}处于“{stage_label}”阶段，卡在“{blocker}”。"
+                f"下一步围绕“{milestone}”确认责任人、时间点和判断标准。"
+            )
+
         data["alternatives"] = actions[:4]
-        data["checklist"] = checklist[:4]
+        data["checklist"] = merged_todos[:4]
         if not data["citations"]:
             source = knowledge[0].source_name if knowledge else "商机推进规范"
             data["citations"] = [{"source": source, "reason": "用于判断推进动作、关键风险和禁用话术。"}]
@@ -964,12 +1155,150 @@ class LLMClient:
             return f"[buyer]听起来有点道理，但围绕{concern}我还没被说服。下一步你准备怎么安排？"
         return f"[buyer]如果要继续推进，请把{concern}相关的条件、时间和负责人说清楚，否则我这边很难排优先级。"
 
+    def _mock_opportunity_report(
+        self,
+        session: TrainingSession,
+        knowledge: list[KnowledgeItem],
+    ) -> dict:
+        """商机推进方案兜底：必须结合业务员填写的字段，禁止写对话轮次。"""
+        ctx = self._opportunity_context(session)
+        source = knowledge[0].source_name if knowledge else "商机推进规范"
+        customer = ctx["customer_name"]
+        stage = ctx["stage"] or "当前阶段"
+        goal = ctx["goal"] or "推进商机"
+        blocker = ctx["decision_blocker"] or "关键阻碍"
+        milestone = ctx["next_milestone"] or "下一步里程碑"
+        stakeholder = ctx["stakeholder"] or "关键人参与情况"
+        last_contact = ctx["last_contact"] or "最近沟通结果"
+        product = ctx["product"] or "现有方案"
+
+        summary = (
+            f"{customer}处于「{stage}」，卡在「{blocker}」。"
+            f"下一步应围绕「{milestone}」把人、时间和条件一次定清。"
+        )
+
+        # 推进成熟度：看关键信息是否齐全、是否可执行
+        completeness = 0
+        for value in (ctx["decision_blocker"], ctx["next_milestone"], ctx["stakeholder"], ctx["last_contact"]):
+            if value:
+                completeness += 1
+        maturity = 40 + completeness * 8
+        if "未参与" in blocker or "未完成" in blocker:
+            maturity = min(maturity, 62)
+        if completeness >= 4:
+            maturity = max(maturity, 68)
+        maturity = max(35, min(88, maturity))
+
+        # 七维：结合商机字段写具体 reason，而不是对话关键词
+        scores = [
+            {
+                "name": "工艺探询",
+                "value": 3 if completeness < 3 else 4,
+                "reason": f"围绕{product}还需补齐水质/水温/使用工艺/布种；当前背景未写全测试口径，方案应先补问再定试样条件。",
+            },
+            {
+                "name": "产品选型",
+                "value": 3 if not product else 4,
+                "reason": f"已锁定方向「{product}」，但未针对客户已知条件说明取舍（高稳 831B/868 vs 通用款）与备选。",
+            },
+            {
+                "name": "技术边界",
+                "value": 3,
+                "reason": "推进方案需写清涂料/化纤难提升、大货小样差异、同浴沉淀风险，避免为冲进度做绝对化承诺。",
+            },
+            {
+                "name": "异议处理",
+                "value": 3 if blocker else 2,
+                "reason": f"针对「{blocker}」应准备带参数/测试标准/案例的回应，而不是安抚话术。",
+            },
+            {
+                "name": "故障归因",
+                "value": 3,
+                "reason": "若客户此前有斑/色变/气味顾虑，应先按水质、残留、同浴、温度归因，再谈责任与整改。",
+            },
+            {
+                "name": "价值合规",
+                "value": 3,
+                "reason": "价值表达要落到 bluesign/GOTS/OEKO-TEX/ZDHC 与省水省时、批次稳定，而不是只谈价格。",
+            },
+            {
+                "name": "推进动作",
+                "value": 4 if milestone else 2,
+                "reason": f"目标「{milestone}」需要落成责任人+时间点+资料/测试条件；当前还需确认谁拍板、谁反馈。",
+            },
+        ]
+
+        good_lines = []
+        if last_contact:
+            good_lines.append(f"最近沟通已有锚点：{last_contact}，可据此复述卡点再提条件。")
+        if product:
+            good_lines.append(f"产品方向已明确（{product}），比泛泛介绍更容易收敛到试样条件。")
+        if stakeholder:
+            good_lines.append(f"关键人线索：{stakeholder}，可设计分角色推进路径。")
+        if not good_lines:
+            good_lines.append("商机背景已填写，具备推进方案成型条件。")
+
+        risk_lines = [
+            f"「{blocker}」未拆成可验证动作时，{customer}内部容易继续空转。",
+            f"若不确认谁最终拍板（{stakeholder or '关键人'}），承诺很难落地。",
+            f"围绕「{milestone}」若只说保持沟通，没有时间/材料/测试条件，推进会反复拖延。",
+        ]
+
+        alternatives = [
+            f"卡点复述：上次谈到「{last_contact}」，这次我们先把「{blocker}」确认成可验证的下一步——您看这件事谁判断、什么时候能给反馈？",
+            f"关键人推进：按目前「{stakeholder}」的情况，建议约采购+技术一起过「{milestone}」的条件，避免单线程等回复。",
+            f"条件换承诺：我们把{product}的试样/测试资料补齐，换您这边确认「{milestone}」的时间和参会人，可以吗？",
+        ]
+
+        checklist = [
+            {
+                "title": f"约齐「{blocker}」相关决策人",
+                "detail": f"确认谁判断「{blocker}」、谁给反馈；把{stakeholder or '采购/技术/老板'}写进参会名单，并约 30 分钟对齐会。",
+                "due": "1 天内",
+            },
+            {
+                "title": f"把「{milestone}」拆成可验收条件",
+                "detail": f"明确完成标准（材料清单/测试口径/时间点），对应目标「{goal}」，避免里程碑停留在口号。",
+                "due": "2 天内",
+            },
+            {
+                "title": f"补齐{product}试样与证据包",
+                "detail": "准备小样条件（用量、温度、浸轧/浸渍）、测试标准（日标/国标）和第三方报告/客户案例，便于回应价格与替换风险。",
+                "due": "3 天内",
+            },
+            {
+                "title": "固化跟进与升级路径",
+                "detail": f"基于「{last_contact}」设定下一次触达时间；若 {customer} 内部无反馈，约定升级到能拍板的人。",
+                "due": "5 天内",
+            },
+        ]
+
+        citations = [
+            {
+                "source": source,
+                "reason": f"用于判断“{stage} / {goal}”下的推进动作、关键风险和禁用话术。",
+            }
+        ]
+
+        return {
+            "overall_score": maturity,
+            "summary": summary,
+            "scores": scores,
+            "good_lines": good_lines[:2],
+            "risk_lines": risk_lines[:3],
+            "alternatives": alternatives[:3],
+            "checklist": checklist[:4],
+            "citations": citations,
+        }
+
     def _mock_report(
         self,
         session: TrainingSession,
         messages: list[TrainingMessage],
         knowledge: list[KnowledgeItem],
     ) -> dict:
+        if self._is_opportunity(session):
+            return self._mock_opportunity_report(session, knowledge)
         source = knowledge[0].source_name if knowledge else "模拟销售 SOP"
         
         # 分析对话内容

@@ -125,18 +125,23 @@ export function normalizeStrategies(value) {
 }
 
 export function normalizeTodos(checklist, alternatives) {
-  const titles = ["确认下一步节点", "拆解关键阻碍", "补齐关键人", "固化跟进动作"];
+  const fallbackTitles = ["确认下一步节点", "拆解关键阻碍", "补齐关键人", "固化跟进动作"];
+  const genericTitles = new Set(fallbackTitles);
   const dues = ["1 天内", "2 天内", "3 天内", "5 天内"];
   const altTexts = normalizeTextList(alternatives);
   const items = Array.isArray(checklist) ? checklist : [];
-  return titles.map((fallbackTitle, index) => {
+  return fallbackTitles.map((fallbackTitle, index) => {
     const item = items[index];
     if (typeof item === "string") {
       return { title: fallbackTitle, detail: item, due: dues[index] };
     }
     if (item && typeof item === "object") {
+      const rawTitle = item.title || item.name || "";
+      const title = rawTitle && rawTitle.length >= 6 && !genericTitles.has(rawTitle)
+        ? rawTitle
+        : (rawTitle && !genericTitles.has(rawTitle) ? rawTitle : fallbackTitle);
       return {
-        title: item.title || item.name || fallbackTitle,
+        title,
         detail: item.detail || item.content || item.task || item.text || altTexts[index] || "把当前问题拆成一个可执行动作。",
         due: item.due || item.deadline || item.time || dues[index],
       };
@@ -146,6 +151,17 @@ export function normalizeTodos(checklist, alternatives) {
       detail: altTexts[index] || "把当前问题拆成一个可执行动作。",
       due: dues[index],
     };
+  });
+}
+
+export function filterCitations(citations) {
+  if (!Array.isArray(citations)) return [];
+  return citations.filter((item) => {
+    const source = String(item?.source || "");
+    if (!source) return false;
+    if (source.includes("LLM 调用状态") || source.includes("LLM调用状态")) return false;
+    if (source.startsWith("mock:") || source.startsWith("mock")) return false;
+    return true;
   });
 }
 

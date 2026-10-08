@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { OPPORTUNITY_MODE } from "../constants/training";
-import { normalizeTextList, normalizeStrategies, normalizeTodos, buildSpeechPair } from "../utils/report";
+import { normalizeTextList, normalizeStrategies, normalizeTodos, buildSpeechPair, filterCitations } from "../utils/report";
 import { scoreToneClass, scoreLevelLabel, buildTrainingTask } from "../utils/score";
 import AbilityRadar from "../components/AbilityRadar";
 import { Empty } from "../components/Layout";
@@ -53,28 +53,51 @@ export default function Report({ report }) {
   const opportunityStrategies = normalizeStrategies(report.alternatives);
   const opportunityTodos = normalizeTodos(report.checklist, report.alternatives);
   const opportunityActions = opportunityTodos.map((item) => item.detail).filter(Boolean);
-  const primaryOpportunityAction = opportunityTodos[0]?.detail || opportunityStrategies[0]?.text || "把下一步推进动作收敛到一个明确的人员、时间和条件。";
+  const primaryOpportunityAction = opportunityTodos[0]?.title && opportunityTodos[0]?.detail
+    ? `${opportunityTodos[0].title}：${opportunityTodos[0].detail}`
+    : (opportunityTodos[0]?.detail || opportunityStrategies[0]?.text || "把下一步推进动作收敛到一个明确的人员、时间和条件。");
   const opportunityQuestion = opportunityContext?.decision_blocker
     ? `针对"${opportunityContext.decision_blocker}"，直接确认：这件事由谁判断、什么时候能给反馈、需要我们补什么材料？`
     : "直接确认：这件事由谁判断、什么时候能给反馈、需要我们补什么材料？";
   const strategyCards = opportunityStrategies;
   const riskLines = normalizeTextList(report.risk_lines);
   const goodLines = normalizeTextList(report.good_lines);
+  const citations = filterCitations(report.citations);
   const judgmentItems = [
-    { label: "当前阶段", value: report.stage || "待确认", text: report.summary || diagnosis?.judgment || "当前应先把客户卡点拆成一个可确认的下一步动作。" },
-    { label: "最大卡点", value: opportunityContext?.decision_blocker || "关键阻碍待确认", text: riskLines[0] || diagnosis?.keyRisk || "当前最大风险尚未被拆成可推进动作。" },
-    { label: "关键人缺口", value: opportunityContext?.stakeholder || "关键人链路待确认", text: riskLines[1] || goodLines[0] || diagnosis?.keyPeople || "需要确认采购、技术和最终决策人的影响关系。" },
+    {
+      label: "当前阶段",
+      value: report.stage || "待确认",
+      text: (report.summary && !report.summary.includes("对话轮次不足")
+        ? report.summary
+        : (diagnosis?.judgment || `当前应围绕"${opportunityContext?.next_milestone || "下一步里程碑"}"把卡点拆成可确认动作。`)),
+    },
+    {
+      label: "最大卡点",
+      value: opportunityContext?.decision_blocker || "关键阻碍待确认",
+      text: riskLines[0] || diagnosis?.keyRisk || "当前最大风险尚未被拆成可推进动作。",
+    },
+    {
+      label: "关键人缺口",
+      value: opportunityContext?.stakeholder || "关键人链路待确认",
+      text: riskLines[1] || goodLines[0] || diagnosis?.keyPeople || "需要确认采购、技术和最终决策人的影响关系。",
+    },
   ];
   const supportScores = (report.scores || []).slice(0, 3);
-  const supportCitations = (report.citations || []).slice(0, 2);
+  const supportCitations = citations.slice(0, 2);
   if (isOpportunity) {
+    const heroSummary = report.summary && !report.summary.includes("对话轮次不足")
+      ? report.summary
+      : (diagnosis?.judgment || `围绕${opportunityContext?.decision_blocker || "当前卡点"}推进到${opportunityContext?.next_milestone || "下一里程碑"}。`);
+    const commandNote = riskLines[0]
+      || diagnosis?.keyRisk
+      || `当前最大风险：${opportunityContext?.decision_blocker || "关键阻碍未拆成可验证动作"}。`;
     return (
       <section className="page opportunity-plan-page">
         <div className="opportunity-hero">
           <div className="opportunity-summary">
             <span className="eyebrow">推进方案</span>
             <h3>{opportunityContext?.customer_name || report.customer_name || "当前商机"}</h3>
-            <p>{report.summary}</p>
+            <p>{heroSummary}</p>
             <div className="report-meta"><span>{report.stage}</span><span>{report.goal}</span><span>{opportunityContext?.decision_blocker || "关键阻碍待确认"}</span></div>
           </div>
           <div className="opportunity-score">
@@ -88,7 +111,7 @@ export default function Report({ report }) {
           <div>
             <span className="section-kicker">优先推进动作</span>
             <h3>{primaryOpportunityAction}</h3>
-            <p>{report.summary || diagnosis?.judgment || "当前应先把客户卡点拆成一个可确认的下一步动作。"}</p>
+            <p>{commandNote}</p>
           </div>
           <aside>
             <span>下一次必须问清</span>
@@ -141,7 +164,9 @@ export default function Report({ report }) {
               </article>
               <article>
                 <b>知识依据</b>
-                <p>{supportCitations[0]?.source || "商机推进规范"}：{supportCitations[0]?.reason || "用于判断推进动作和禁用话术。"}</p>
+                <p>{supportCitations[0]
+                  ? `${supportCitations[0].source}：${supportCitations[0].reason}`
+                  : "结合商机背景与知识库判断推进动作和禁用话术。"}</p>
               </article>
             </div>
             <div className="plan-score-list">{supportScores.map((item) => (
@@ -152,7 +177,7 @@ export default function Report({ report }) {
 
         <details className="report-evidence">
           <summary>查看引用依据</summary>
-          <ul>{report.citations.map((item, i) => <li key={i}><b>{item.source}</b><span>{item.reason}</span></li>)}</ul>
+          <ul>{citations.map((item, i) => <li key={i}><b>{item.source}</b><span>{item.reason}</span></li>)}</ul>
         </details>
       </section>
     );
@@ -260,7 +285,7 @@ export default function Report({ report }) {
 
       <details className="report-evidence">
         <summary>查看引用依据</summary>
-        <ul>{report.citations.map((item, i) => <li key={i}><b>{item.source}</b><span>{item.reason}</span></li>)}</ul>
+        <ul>{citations.map((item, i) => <li key={i}><b>{item.source}</b><span>{item.reason}</span></li>)}</ul>
       </details>
     </section>
   );
