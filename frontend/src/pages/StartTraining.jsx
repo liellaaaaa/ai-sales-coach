@@ -45,14 +45,13 @@ function mergePlanDraft(prev, draft, ownerName) {
   };
 }
 
-export default function StartTraining({ onStarted, onError, recordCount, user, planDraft, onPlanDraftApplied }) {
+export default function StartTraining({ onStarted, onError, user, planDraft, onPlanDraftApplied }) {
   const ownerName = user?.name || user?.username || "";
   const [form, setForm] = useState(() => mergePlanDraft({ ...defaultForm, owner_name: ownerName }, planDraft, ownerName));
   const [showExtraFields, setShowExtraFields] = useState(false);
   const [showFlowRef, setShowFlowRef] = useState(false);
   const [relationshipTouched, setRelationshipTouched] = useState(Boolean(planDraft));
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
   const stageTabsRef = useRef(null);
 
   // 推进方案带入：合并进表单后立刻消费掉，避免下次进页重复套用
@@ -142,7 +141,7 @@ export default function StartTraining({ onStarted, onError, recordCount, user, p
       return;
     }
     onError("");
-    setShowConfirm(true);
+    void confirmStart();
   }
 
   async function confirmStart() {
@@ -150,7 +149,6 @@ export default function StartTraining({ onStarted, onError, recordCount, user, p
     try {
       setIsSubmitting(true);
       await onStarted(buildTrainingPayload(nextForm), form.training_type, nextForm);
-      setShowConfirm(false);
     } catch (err) {
       setIsSubmitting(false);
       onError(err.message);
@@ -159,19 +157,6 @@ export default function StartTraining({ onStarted, onError, recordCount, user, p
 
   return (
     <section className="page knowledge-page start-training-page">
-      <div className="hero start-hero">
-        <div className="intro">
-          <span className="eyebrow">训练闭环</span>
-          <h3>一页配好，开练前再确认一次</h3>
-          <p className="hint">模式和客户信息填好，选阶段与目标后点开始；弹窗核对无误再进入训练。</p>
-        </div>
-        <div className="metric-card compact-metric">
-          <span className="small">本地训练记录</span>
-          <strong>{recordCount}</strong>
-          <p className="small">完成训练后自动保存</p>
-        </div>
-      </div>
-
       {planTraining && (
         <div className="plan-focus-bar">
           <div className="section-title">
@@ -212,7 +197,6 @@ export default function StartTraining({ onStarted, onError, recordCount, user, p
             index="1"
             title="练什么模式"
             desc="情景陪练进对话；推进教练出方案。"
-            right={<span className="training-step-pill"><span>第 1 段</span><b>模式与模板</b></span>}
           />
           <div className="mode-cards" role="radiogroup" aria-label="训练模式">
             {[
@@ -261,7 +245,6 @@ export default function StartTraining({ onStarted, onError, recordCount, user, p
             index="2"
             title="跟谁练"
             desc="客户关系只表示有没有合作；性格和关注点独立选择。"
-            right={<span className="training-step-pill"><span>第 2 段</span><b>客户信息</b></span>}
           />
           <div className="form customer-info-form">
             <label>客户名称<input value={form.customer_name} onChange={(e) => updateForm({ customer_name: e.target.value })} /></label>
@@ -310,8 +293,7 @@ export default function StartTraining({ onStarted, onError, recordCount, user, p
           <SectionHead
             index="3"
             title="这次练什么"
-            desc="阶段决定位置，目标决定这一练的重点。目标只显示当前阶段相关项。"
-            right={<span className="training-step-pill is-active"><span>第 3 段</span><b>阶段与目标</b></span>}
+            desc="阶段决定位置，目标决定这一练的重点。"
           />
 
           <div className="quick-start">
@@ -382,65 +364,17 @@ export default function StartTraining({ onStarted, onError, recordCount, user, p
         </section>
 
         <div className="actions train-submit-actions start-rail">
-          <div className="start-rail-summary" aria-live="polite">
-            <span>{form.training_type}</span>
-            <b>{form.stage}</b>
-            <b>{form.goal}</b>
-            <span>{form.customer_name || "未填客户"}</span>
-          </div>
           {isSubmitting ? (
             <span className="submit-waiting" role="status" aria-live="polite">
-              <i /><span>{isOpportunity ? "正在生成推进方案，请稍等。" : "正在创建训练对话，请稍等。"}</span>
+              <i /><span>{isOpportunity ? "正在生成推进方案…" : "正在创建训练…"}</span>
             </span>
           ) : (
             <button className="primary" type="submit">
-              {isOpportunity ? "生成推进方案" : "开始本次训练"}
+              {isOpportunity ? "生成推进方案" : "开始训练"}
             </button>
           )}
         </div>
       </form>
-
-      {showConfirm && (
-        <div className="confirm-overlay" role="dialog" aria-modal="true" aria-label="确认训练配置">
-          <div className="confirm-sheet">
-            <div className="confirm-head">
-              <h3>确认本次训练配置</h3>
-              <p className="hint">下面是将要创建的训练；有问题可返回修改。</p>
-            </div>
-            <div className="confirm-body">
-              <div className="confirm-grid">
-                <div><span>模式</span><b>{form.training_type}</b></div>
-                <div><span>客户</span><b>{form.customer_name}</b></div>
-                <div><span>产品</span><b>{form.product_name}</b></div>
-                <div><span>客户关系</span><b>{form.customer_type}</b></div>
-                <div><span>商机阶段</span><b>{form.stage}</b></div>
-                <div><span>训练目标</span><b>{form.goal}</b></div>
-                <div><span>客户设定</span><b>{form.customer_difficulty} · {form.customer_personality} · {form.customer_concern}</b></div>
-                {isOpportunity ? <div><span>关键阻碍</span><b>{form.decision_blocker}</b></div> : null}
-                {isOpportunity ? <div><span>下一步</span><b>{form.next_milestone}</b></div> : null}
-              </div>
-              <div className="confirm-background">
-                <span>背景摘要</span>
-                <p>{form.background}</p>
-              </div>
-              {form.plan_training && (
-                <div className="confirm-plan-focus">
-                  <span>训练焦点</span>
-                  <p>{form.plan_training.plan_summary}</p>
-                  <p>优先推进动作：{form.plan_training.primary_action}</p>
-                  <p>必须问清：{form.plan_training.must_ask}</p>
-                </div>
-              )}
-            </div>
-            <div className="confirm-actions">
-              <button type="button" className="secondary" onClick={() => setShowConfirm(false)} disabled={isSubmitting}>返回修改</button>
-              <button type="button" className="primary" onClick={confirmStart} disabled={isSubmitting}>
-                {isSubmitting ? (isOpportunity ? "生成中…" : "创建中…") : (isOpportunity ? "确认生成方案" : "确认开始训练")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </section>
   );
 }

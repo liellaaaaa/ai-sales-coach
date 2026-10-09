@@ -200,18 +200,10 @@ function ChunkDetail({ document, onBack, onError }) {
 
   return (
     <section className="page chunk-detail-page">
-      <div className="hero">
-        <div className="intro">
-          <button className="text-button back-button" onClick={onBack}>返回文档列表</button>
-          <span className="eyebrow">片段详情</span>
-          <h3>{document.title}</h3>
-          <p className="hint">{document.parse_summary || "用于检查文档解析质量；片段只有启用后才会参与陪练和复盘引用。"}</p>
-        </div>
-        <div className="metric-card">
-          <span className="small">当前版本</span>
-          <strong>{document.current_version?.version_label || "-"}</strong>
-          <p className="small">{total} 个片段</p>
-        </div>
+      <div className="chunk-detail-head">
+        <button className="text-button back-button" onClick={onBack}>返回</button>
+        <b>{document.title}</b>
+        <span className="small">{document.current_version?.version_label || "-"} · {total} 个片段</span>
       </div>
       <section className="panel chunk-detail-panel">
         <div className="panel-inner">
@@ -455,15 +447,6 @@ export default function Knowledge({
 
   return (
     <section className="page">
-      <div className="hero">
-        <div className="intro">
-          <span className="eyebrow">知识资料</span>
-          <h3>{canEdit ? "统一管理 SOP 与产品资料" : "查看 SOP 与产品资料"}</h3>
-          <p className="hint">{canEdit ? "上传文件后自动抽取正文、识别片段类型，并作为陪练、复盘和推进方案的引用依据。" : "当前账号可以查看已入库资料和解析片段，资料导入与管理由管理员完成。"}</p>
-        </div>
-        <div className="metric-card"><span className="small">已上传文档</span><strong>{allDocuments.length}</strong><p className="small">{items.length} 个片段可被检索</p></div>
-      </div>
-
       {canEdit && (
         <form className="panel doc-upload-panel" onSubmit={uploadDocument}>
           <div className="panel-inner knowledge-manager">

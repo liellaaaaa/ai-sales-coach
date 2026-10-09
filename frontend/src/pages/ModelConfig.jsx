@@ -89,18 +89,11 @@ export default function ModelConfig({ runtimeStatus, onSaved, onError }) {
 
   return (
     <section className="page profile-page model-config-page">
-      <div className="hero profile-hero">
-        <div className="intro">
-          <span className="eyebrow">系统设置</span>
-          <h3>模型配置</h3>
-          <p>配置 DeepSeek 兼容接口。页面只保存运行时配置，不回显完整 API Key。</p>
-        </div>
-        <div className="profile-identity-card model-status-card">
-          <span className={`model-status-dot ${runtimeStatus?.llm_mode === "llm" ? "is-live" : ""}`} />
-          <div>
-            <b>{runtimeStatus?.llm_mode === "llm" ? "已接入模型" : "模拟模式"}</b>
-            <p>{config?.model_id || "deepseek-v4-flash"}</p>
-          </div>
+      <div className="profile-identity-card model-status-card">
+        <span className={`model-status-dot ${runtimeStatus?.llm_mode === "llm" ? "is-live" : ""}`} />
+        <div>
+          <b>{runtimeStatus?.llm_mode === "llm" ? "已接入模型" : "模拟模式"}</b>
+          <p>{config?.model_id || "deepseek-v4-flash"}</p>
         </div>
       </div>
 

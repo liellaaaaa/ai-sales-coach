@@ -31,18 +31,11 @@ export default function Profile({ user, onUser, onError }) {
 
   return (
     <section className="page profile-page">
-      <div className="hero profile-hero">
-        <div className="intro">
-          <span className="eyebrow">账号中心</span>
-          <h3>个人资料</h3>
-          <p>维护当前登录账号的基础信息。角色与权限由系统配置，暂不在这里直接修改。</p>
-        </div>
-        <div className="profile-identity-card">
-          <span className="account-avatar profile-avatar">{accountInitial(user)}</span>
-          <div>
-            <b>{user.name}</b>
-            <p>{user.username} · {roleName(user.role)}</p>
-          </div>
+      <div className="profile-identity-card">
+        <span className="account-avatar profile-avatar">{accountInitial(user)}</span>
+        <div>
+          <b>{user.name}</b>
+          <p>{user.username} · {roleName(user.role)}</p>
         </div>
       </div>
 

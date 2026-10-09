@@ -17,8 +17,7 @@ export default function Login({ onLogin }) {
   return (
     <div className="login-page">
       <form className="login-card" onSubmit={submit}>
-        <span className="eyebrow">AI 销售陪练 MVP</span>
-        <h1>先跑通真实训练闭环</h1>
+        <h1>销售陪练</h1>
         <p>演示账号：sales / admin，密码都是 123456。</p>
         <input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
         <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />

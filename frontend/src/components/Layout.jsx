@@ -13,7 +13,7 @@ export function RuntimeModeNotice() {
   return (
     <div className="runtime-mode-notice" role="status" aria-live="polite">
       <b>当前为模拟模式</b>
-      <span>未接入真实 LLM，客户回复、推荐回复和复盘报告会使用本地模拟与规则兜底结果。</span>
+      <span>未接入真实 LLM，客户回复和复盘报告会使用本地模拟结果。</span>
     </div>
   );
 }
@@ -69,7 +69,7 @@ export function goalIcon(id) {
     objection: <><path d="M12 3l8 4v5c0 4.5-3.2 8-8 10-4.8-2-8-5.5-8-10V7z"></path><path d="M9 12l2 2 4-4"></path></>,
     payment: <><path d="M4 7h16v10H4z"></path><path d="M4 10h16"></path><path d="M8 15h4"></path></>,
     retain: <><path d="M7 8a5 5 0 0 1 8.5-2.8L18 7"></path><path d="M18 4v3h-3"></path><path d="M17 16a5 5 0 0 1-8.5 2.8L6 17"></path><path d="M6 20v-3h3"></path></>,
-    repurchase: <><path d="M4 12a8 8 0 0 1 13.5-5.8"></path><path d="M18 3v4h-4"></path><path d="M20 12a8 8 0 0 1-13.5 5.8"></path><path d="M6 21v-4h4"></path></>,
+    repurchase: <><path d="M4 12a8 8 0 0 1 13.5-5.8"></path><path d="M18 3v4h-4"></path><path d="M20 12a8 8 0 0 1-13.5 4.2"></path><path d="M6 21v-4h4"></path></>,
     lead: <><path d="M5 19l5-5"></path><path d="M14 4l6 6-8 8H6v-6z"></path><path d="M15 9l-6 6"></path></>,
     connect: <><path d="M8 12h8"></path><path d="M12 8v8"></path><path d="M7 7a5 5 0 0 1 7-3"></path><path d="M17 17a5 5 0 0 1-7 3"></path></>,
     visit: <><path d="M12 21s7-5.2 7-11a7 7 0 0 0-14 0c0 5.8 7 11 7 11z"></path><path d="M12 10h.01"></path></>,
@@ -79,7 +79,6 @@ export function goalIcon(id) {
     trial: <><path d="M5 5h14v14H5z"></path><path d="M8 12l2.5 2.5L16 9"></path></>,
     contract: <><path d="M7 4h10v16H7z"></path><path d="M10 8h4"></path><path d="M10 12h4"></path><path d="M10 16h2"></path></>,
     delivery: <><path d="M4 7h10v8H4z"></path><path d="M14 10h3l3 3v2h-6z"></path><path d="M7 18h.01"></path><path d="M17 18h.01"></path></>,
-    // 旧 id 兼容
     stalled: <><path d="M5 12h8"></path><path d="M13 7l5 5-5 5"></path><path d="M5 6h5"></path><path d="M5 18h5"></path></>,
     technical: <><path d="M9 4h6"></path><path d="M10 4v5l-4 7a3 3 0 0 0 2.6 4.5h6.8A3 3 0 0 0 18 16l-4-7V4"></path><path d="M8 15h8"></path></>,
     retention: <><path d="M7 8a5 5 0 0 1 8.5-2.8L18 7"></path><path d="M18 4v3h-3"></path><path d="M17 16a5 5 0 0 1-8.5 2.8L6 17"></path><path d="M6 20v-3h3"></path></>,
@@ -115,13 +114,10 @@ export default function Layout({
   user,
   view,
   setView,
-  railCollapsed,
-  setRailCollapsed,
   accountOpen,
   setAccountOpen,
   runtimeStatus,
   pageTitle,
-  navGroups,
   logout,
   children,
 }) {
@@ -140,86 +136,61 @@ export default function Layout({
   }
 
   return (
-    <div className={`app ${railCollapsed ? "rail-collapsed" : ""} ${view === "chat" ? "view-chat" : ""}`}>
-      <aside className="rail">
-        <div className="brand">
-          <span className="mark" />
-          <div className="brand-copy"><h1>销售陪练</h1><p>培训闭环 MVP</p></div>
-          <button className="rail-toggle" aria-label={railCollapsed ? "展开侧边栏" : "折叠侧边栏"} title={railCollapsed ? "展开侧边栏" : "折叠侧边栏"} onClick={() => setRailCollapsed(!railCollapsed)}>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg>
-          </button>
+    <div className={`app app-shell ${view === "chat" ? "view-chat" : ""}`}>
+      <header className="topbar">
+        <div className="topbar-title">
+          <h2>{pageTitle}</h2>
+          <RuntimeModeBadge runtimeStatus={runtimeStatus} />
         </div>
-        <nav className="nav" aria-label="应用导航">
-          {navGroups.map((group) => (
-            <section className={`nav-group ${group.title === "知识资料" ? "standalone" : ""}`} key={group.title}>
-              <p className="nav-group-title">{group.title}</p>
-              {group.items.map(([id, title, sub]) => (
-                <button key={id} className={`nav-item ${view === id ? "active" : ""} ${id === "start" ? "primary-entry" : ""} ${id === "knowledge" ? "knowledge-entry" : ""}`} onClick={() => setView(id)}>
-                  <span className="nav-icon">{navIcon(id)}</span>
-                  <span className="nav-label"><b>{title}</b><span className="small">{sub}</span></span>
-                </button>
-              ))}
-            </section>
-          ))}
-        </nav>
-      </aside>
-
-      <main className="main">
-        <div className="topbar">
-          <div className="topbar-title">
-            <h2>{pageTitle}</h2>
-            <RuntimeModeBadge runtimeStatus={runtimeStatus} />
-          </div>
-          <div className="account-menu">
-            <button className="account-trigger" type="button" aria-haspopup="menu" aria-expanded={accountOpen} onClick={() => setAccountOpen((value) => !value)}>
-              <span className="account-avatar">{accountInitial(user)}</span>
-              <span className="account-copy"><b>{user.name}</b><span>{roleName(user.role)}</span></span>
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"></path></svg>
-            </button>
-            {accountOpen && (
-              <div className="account-popover" role="menu">
-                <div className="account-profile">
-                  <span className="account-avatar large">{accountInitial(user)}</span>
-                  <div><b>{user.name}</b><p>{user.username} · {roleName(user.role)}</p></div>
-                </div>
+        <div className="account-menu">
+          <button className="account-trigger" type="button" aria-haspopup="menu" aria-expanded={accountOpen} onClick={() => setAccountOpen((value) => !value)}>
+            <span className="account-avatar">{accountInitial(user)}</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"></path></svg>
+          </button>
+          {accountOpen && (
+            <div className="account-popover" role="menu">
+              <div className="account-profile">
+                <span className="account-avatar large">{accountInitial(user)}</span>
+                <div><b>{user.name}</b><p>{user.username} · {roleName(user.role)}</p></div>
+              </div>
+              <button
+                className="account-row"
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setAccountOpen(false);
+                  setView("profile");
+                }}
+              >
+                <span>个人资料</span>
+                <small>账号信息与权限</small>
+              </button>
+              {user.role === "admin" && (
                 <button
                   className="account-row"
                   type="button"
                   role="menuitem"
                   onClick={() => {
                     setAccountOpen(false);
-                    setView("profile");
+                    setView("modelConfig");
                   }}
                 >
-                  <span>个人资料</span>
-                  <small>账号信息与权限</small>
+                  <span>模型配置</span>
+                  <small>LLM / API Key</small>
                 </button>
-                {user.role === "admin" && (
-                  <button
-                    className="account-row"
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setAccountOpen(false);
-                      setView("modelConfig");
-                    }}
-                  >
-                    <span>模型配置</span>
-                    <small>DeepSeek V4 Flash / API Key</small>
-                  </button>
-                )}
-                <button className="account-row danger" type="button" role="menuitem" onClick={logout}>
-                  <span>退出登录</span>
-                  <small>返回登录入口</small>
-                </button>
-              </div>
-            )}
-          </div>
+              )}
+              <button className="account-row danger" type="button" role="menuitem" onClick={logout}>
+                <span>退出登录</span>
+                <small>返回登录入口</small>
+              </button>
+            </div>
+          )}
         </div>
-        <div className="workspace">
-          {isMockRuntime(runtimeStatus) && <RuntimeModeNotice />}
-          {children}
-        </div>
+      </header>
+
+      <main className="workspace">
+        {isMockRuntime(runtimeStatus) && <RuntimeModeNotice />}
+        {children}
       </main>
 
       <nav className="bottom-tabs" aria-label="底部导航">

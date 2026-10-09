@@ -196,7 +196,6 @@ export default function Report({ report, session, onTrainFromPlan }) {
     <section className="page report-page">
       <div className="report-hero">
         <div className="report-summary">
-          <span className="eyebrow">复盘报告</span>
           <h3>{coachVerdict}</h3>
           <p>{report.summary}</p>
           <div className="report-meta"><span>{report.goal}</span><span>{report.stage}</span><span>{needRetrain ? "建议复训" : "可进入下一轮"}</span></div>

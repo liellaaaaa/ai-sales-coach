@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.db.session import SessionLocal
 from app.models import TrainingMessage, TrainingReport, TrainingSession, User, utcnow
 from app.services.knowledge import find_relevant_knowledge
-from app.services.llm import LLMClient, extract_speaker
+from app.services.llm import LLMClient, _DictObj, extract_speaker
 from app.services.report_details import soft_delete_training_session, write_report_details
 from app.services.voice import SPEAKER_DEFAULT, VoiceClient, get_speaker_voice, get_tts_style, normalize_speaker
 
@@ -39,8 +39,17 @@ class TrainingService:
 
             return extract_speaker_tag(text or "")
         speaker = normalize_speaker(speaker)
-        clean = (clean or "").strip() or (text or "").strip()
-        return speaker, clean
+        # 只保留剥离角色标签后的正文；标签本身不能当内容回填
+        return speaker, (clean or "").strip()
+
+    def _ensure_customer_content(self, session, messages, raw_text: str) -> tuple[str, str]:
+        """清洗客户回复；空文本/纯标签时用 mock 兜底，避免写入空白消息。"""
+        speaker, clean = self.split_speaker(raw_text)
+        if clean.strip():
+            return speaker, clean.strip()
+        fallback = self.llm._mock_customer_reply(session, messages or [])
+        speaker, clean = self.split_speaker(fallback)
+        return speaker, (clean or fallback or "请继续说明你的方案。").strip()
 
     # ---------- 用例 ----------
     async def start_session(self, db: Session, user: User, payload: dict[str, Any]) -> TrainingSession:
@@ -78,7 +87,7 @@ class TrainingService:
     async def _append_opening_customer_message(self, db: Session, session: TrainingSession) -> TrainingMessage:
         knowledge = find_relevant_knowledge(db, session)
         first_reply = await self.llm.customer_reply(session, [], knowledge)
-        speaker, clean = self.split_speaker(first_reply)
+        speaker, clean = self._ensure_customer_content(session, [], first_reply)
         message = TrainingMessage(
             session_id=session.id, role="customer", content=clean, speaker=speaker
         )
@@ -105,7 +114,7 @@ class TrainingService:
         self.append_sales_message(db, session, content, speaker)
         knowledge = find_relevant_knowledge(db, session)
         reply = await self.llm.customer_reply(session, session.messages, knowledge)
-        speaker_tag, clean = self.split_speaker(reply)
+        speaker_tag, clean = self._ensure_customer_content(session, session.messages, reply)
         message = TrainingMessage(
             session_id=session.id, role="customer", content=clean, speaker=speaker_tag
         )
@@ -174,7 +183,10 @@ class TrainingService:
                 yield f"event: token\ndata: {json.dumps({'text': chunk}, ensure_ascii=False)}\n\n"
 
             full_text = "".join(collected_text).strip()
-            speaker, clean_text = self.split_speaker(full_text)
+            session_obj = _DictObj(session_snapshot) if isinstance(session_snapshot, dict) else session_snapshot
+            speaker, clean_text = self._ensure_customer_content(
+                session_obj, messages_snapshot, full_text
+            )
             message = TrainingMessage(
                 session_id=session_id,
                 role="customer",

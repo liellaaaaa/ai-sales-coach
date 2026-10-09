@@ -9176,3 +9176,374 @@ fieldset:disabled button:hover {
     width: 100%;
   }
 }
+
+/* ===== App 三段式壳层（上导航 / 中滚动 / 底 tab） ===== */
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  min-height: 100%;
+  overflow: hidden;
+  background: #f3f5f9;
+}
+
+body::before { display: none; }
+
+.app.app-shell {
+  height: 100dvh;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+  overflow: hidden;
+  background: #f3f5f9;
+}
+
+.app.app-shell .rail { display: none !important; }
+
+.app.app-shell .topbar {
+  position: relative;
+  top: auto;
+  z-index: 12;
+  min-height: 48px;
+  padding: 8px 14px;
+  border-bottom: 1px solid rgba(222, 228, 238, 0.95);
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(12px);
+}
+
+.app.app-shell .topbar h2 {
+  font-size: 16px;
+  font-weight: 760;
+  color: #1f2328;
+}
+
+.app.app-shell .topbar-title { gap: 8px; }
+
+.app.app-shell .account-trigger {
+  min-height: 36px;
+  grid-template-columns: 28px 14px;
+  padding: 3px 8px 3px 4px;
+}
+
+.app.app-shell .account-trigger .account-copy { display: none; }
+
+.app.app-shell .workspace {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px 12px 16px;
+}
+
+.app.app-shell.view-chat .workspace {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.app.app-shell .bottom-tabs {
+  display: grid;
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  z-index: 20;
+  flex: 0 0 auto;
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid rgba(214, 222, 234, 0.95);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 -4px 16px rgba(30, 41, 59, 0.04);
+}
+
+.app.app-shell .bottom-tab { min-height: 48px; }
+
+/* 对话页：顶提示条 + 中间消息滚动 + 底输入固定 */
+.chat-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  gap: 0;
+  animation: none;
+}
+
+.chat-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  background: #fff;
+}
+
+.finish-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(222, 228, 238, 0.95);
+  background: #f7f9fc;
+}
+
+.finish-bar.is-ready { background: #eef6ff; }
+
+.finish-bar-copy {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.finish-bar-copy b {
+  font-size: 13px;
+  font-weight: 760;
+  color: #243047;
+  line-height: 1.3;
+}
+
+.finish-bar-copy span {
+  color: #7a8494;
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.finish-bar .finish-button {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+.finish-bar .finish-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.chat-page .chat-log {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 14px 12px 18px;
+  gap: 12px;
+  background: #f7f9fc;
+  display: grid;
+  align-content: start;
+}
+
+.chat-page .msg { max-width: 86%; }
+
+.chat-page .bubble {
+  padding: 11px 13px;
+  font-size: 14px;
+  line-height: 1.65;
+  border-radius: 14px;
+}
+
+.chat-composer {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px 10px;
+  border-top: 1px solid rgba(222, 228, 238, 0.95);
+  background: #fff;
+}
+
+.chat-composer .composer-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.chat-composer .composer-row input {
+  min-height: 42px;
+  border-radius: 999px;
+  padding: 0 14px;
+  font-size: 14px;
+}
+
+.chat-composer .send-button {
+  min-width: 56px;
+  min-height: 42px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.chat-composer .mic-button {
+  width: 42px;
+  min-width: 42px;
+  min-height: 42px;
+  border-radius: 999px;
+}
+
+.chat-composer .mic-button .mic-label { display: none; }
+
+.composer-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 2px;
+}
+
+.composer-foot .auto-read-toggle {
+  font-size: 11px;
+  color: #7a8494;
+}
+
+.chat-composer .barge-in-bar {
+  margin: 0 0 2px;
+}
+
+/* 其它页面：去掉大标题区，内容紧凑 */
+.app.app-shell .page {
+  gap: 12px;
+  animation: none;
+}
+
+.app.app-shell .hero {
+  display: none;
+}
+
+.app.app-shell .report-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid rgba(222, 228, 238, 0.95);
+}
+
+.app.app-shell .report-summary h3 {
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+.app.app-shell .report-summary > p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.app.app-shell .report-score-card {
+  min-width: 88px;
+  padding: 10px 12px;
+  text-align: center;
+}
+
+.app.app-shell .report-score-card strong {
+  font-size: 28px;
+}
+
+.app.app-shell .intro h3 { font-size: 20px; }
+
+.app.app-shell .panel,
+.app.app-shell .card,
+.app.app-shell .profile-card,
+.app.app-shell .profile-panel {
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(30, 41, 59, 0.04);
+}
+
+.app.app-shell .metric-card,
+.app.app-shell .profile-metrics article {
+  padding: 12px 14px;
+}
+
+.app.app-shell .section-title h4,
+.app.app-shell .section-heading h4 {
+  font-size: 15px;
+}
+
+.app.app-shell .chunk-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 2px 8px;
+}
+
+.app.app-shell .chunk-detail-head b {
+  min-width: 0;
+  flex: 1;
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app.app-shell .history-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding: 0 2px;
+}
+
+.app.app-shell .record-item {
+  padding: 12px;
+}
+
+.app.app-shell .record-copy p { display: none; }
+
+.app.app-shell .record-actions button {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 12.5px;
+}
+
+.app.app-shell .runtime-mode-notice {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
+.app.app-shell .toast {
+  position: absolute;
+  top: 54px;
+  left: 12px;
+  right: 12px;
+  width: auto;
+  margin: 0;
+  z-index: 40;
+}
+
+/* 确认弹窗等浮层仍可用 */
+.app.app-shell .confirm-grid { gap: 10px; }
+
+/* 登录页独立于 App 壳 */
+.login-page {
+  height: 100dvh;
+  overflow: auto;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+}
+
+.login-card h1 {
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.login-card .eyebrow {
+  display: none;
+}

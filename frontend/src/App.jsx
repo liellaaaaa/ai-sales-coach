@@ -21,7 +21,6 @@ const LAST_SESSION_KEY = "salesCoachLastSessionId";
 function App() {
   const [user, setUser] = useState(null);
   const [view, setView] = useState("start");
-  const [railCollapsed, setRailCollapsed] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [sessions, setSessions] = useState([]);
   const [session, setSession] = useState(null);
@@ -152,19 +151,16 @@ function App() {
 
   if (!user) return <Login onLogin={(nextUser) => { setUser(nextUser); setView("start"); loadAll(); }} />;
 
-  const navGroups = [
-    { title: "训练流程", items: [["start", "开始训练", "新建训练"], ["chat", "训练对话", "当前对话"]] },
-    { title: "复盘成长", items: [["report", "结果报告", "复盘方案"], ["history", "历史记录", "训练留档"], ["dashboard", "能力看板", "个人趋势"]] },
-    {
-      title: "知识资料",
-      items: [["knowledge", user.role === "admin" ? "文档管理" : "文档查看", user.role === "admin" ? "SOP / 产品资料" : "只读资料"]],
-    },
-  ];
   const pageTitle = {
-    ...Object.fromEntries(navGroups.flatMap((group) => group.items.map(([id, title]) => [id, title]))),
-    profile: "个人资料",
-    modelConfig: "模型配置",
-  }[view];
+    start: "训练",
+    chat: "对话",
+    report: "报告",
+    history: "历史",
+    dashboard: "看板",
+    knowledge: "资料",
+    profile: "我的",
+    modelConfig: "配置",
+  }[view] || "销售陪练";
 
   async function startSession(payload, mode, formContext) {
     setError("");
@@ -216,13 +212,10 @@ function App() {
       user={user}
       view={view}
       setView={setView}
-      railCollapsed={railCollapsed}
-      setRailCollapsed={setRailCollapsed}
       accountOpen={accountOpen}
       setAccountOpen={setAccountOpen}
       runtimeStatus={runtimeStatus}
       pageTitle={pageTitle}
-      navGroups={navGroups}
       logout={logout}
     >
       {error && <div className="toast">{error}</div>}
@@ -231,7 +224,6 @@ function App() {
           user={user}
           onError={setError}
           onStarted={startSession}
-          recordCount={sessions.length}
           planDraft={planDraft}
           onPlanDraftApplied={() => setPlanDraft(null)}
         />

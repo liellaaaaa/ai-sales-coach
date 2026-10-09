@@ -89,13 +89,6 @@ export default function Dashboard({ summary }) {
   const nextFocus = weakDimension?.name || topGoal?.name || "价格异议";
   return (
     <section className="page dashboard-page">
-      <div className="hero dashboard-hero">
-        <div className="intro">
-          <span className="eyebrow">能力成长</span>
-          <h3>个人训练画像</h3>
-          <p className="hint">先看状态，再看短板，最后决定下一轮练什么。</p>
-        </div>
-      </div>
       <div className="profile-metrics">
         <article><span>训练次数</span><strong>{trainingCount}</strong><p>累计训练记录</p></article>
         <article><span>复盘完成</span><strong>{completedCount}</strong><p>{completeRate}% 已形成报告</p></article>
