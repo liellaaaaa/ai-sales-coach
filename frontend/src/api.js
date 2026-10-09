@@ -1,5 +1,19 @@
 const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 
+/** 401 时清理登录态并广播事件，由 App 统一跳转登录页 */
+function notifyAuthExpired() {
+  localStorage.removeItem("salesCoachToken");
+  window.dispatchEvent(new CustomEvent("sales-coach-auth-expired"));
+}
+
+function throwHttpError(response, body) {
+  if (response.status === 401) {
+    notifyAuthExpired();
+    throw new Error(body.detail || "登录已失效，请重新登录");
+  }
+  throw new Error(body.detail || "请求失败");
+}
+
 export async function api(path, options = {}) {
   const token = localStorage.getItem("salesCoachToken");
   const response = await fetch(`${API_BASE}${path}`, {
@@ -12,7 +26,7 @@ export async function api(path, options = {}) {
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail || "请求失败");
+    throwHttpError(response, body);
   }
   return response.json();
 }
@@ -28,7 +42,7 @@ export async function apiForm(path, formData) {
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail || "请求失败");
+    throwHttpError(response, body);
   }
   return response.json();
 }
@@ -51,6 +65,10 @@ export async function apiAudio(path, body) {
     } catch {
       const text = await response.text().catch(() => "");
       if (text) detail = text;
+    }
+    if (response.status === 401) {
+      notifyAuthExpired();
+      throw new Error(detail || "登录已失效，请重新登录");
     }
     throw new Error(detail);
   }
@@ -93,7 +111,7 @@ export async function apiStream(path, body, handlers = {}, options = {}) {
   }
   if (!response.ok) {
     const errBody = await response.json().catch(() => ({}));
-    throw new Error(errBody.detail || "请求失败");
+    throwHttpError(response, errBody);
   }
 
   const reader = response.body.getReader();

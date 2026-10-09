@@ -125,6 +125,19 @@ function App() {
       .catch(() => localStorage.removeItem("salesCoachToken"));
   }, []);
 
+  // 任意请求 401 时统一清理登录态并回到登录页
+  useEffect(() => {
+    function onAuthExpired() {
+      setUser(null);
+      setSession(null);
+      setReport(null);
+      setError("");
+      setView("start");
+    }
+    window.addEventListener("sales-coach-auth-expired", onAuthExpired);
+    return () => window.removeEventListener("sales-coach-auth-expired", onAuthExpired);
+  }, []);
+
   // 点进「训练对话」时若没有当前会话，从历史回填；点进「历史记录」时刷新列表
   useEffect(() => {
     if (!user) return;

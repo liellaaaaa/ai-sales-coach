@@ -170,6 +170,7 @@ export default function Chat({ session, restoring, onSession, onReport, onError,
   const sendSeqRef = useRef(0);
   const sendingRef = useRef(false);
   const liveTipSeqRef = useRef(0);
+  const autoPlayedSessionRef = useRef(null);
   const salesTurns = useMemo(() => session?.messages?.filter((msg) => msg.role === "sales").length || 0, [session]);
   const exampleReply =
     standardReplies[session?.goal] ||
@@ -192,6 +193,18 @@ export default function Chat({ session, restoring, onSession, onReport, onError,
       pcmPlayerRef.current?.dispose();
     };
   }, [session?.id]);
+
+  // 进入对话页时自动朗读最新一条客户回复（覆盖「开始本次训练」后的首句）
+  useEffect(() => {
+    if (!session?.id || !voiceEnabled || !autoRead) return;
+    if (autoPlayedSessionRef.current === session.id) return;
+    const messages = session.messages || [];
+    const lastIndex = messages.map((m) => m.role).lastIndexOf("customer");
+    if (lastIndex < 0) return;
+    autoPlayedSessionRef.current = session.id;
+    void speakMessage(messages[lastIndex], lastIndex);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.id, voiceEnabled, autoRead]);
 
   /** 停掉 AudioPlayer + PCMStreamPlayer，重置 playback 态 */
   function stopAllPlayback() {
@@ -371,6 +384,11 @@ export default function Chat({ session, restoring, onSession, onReport, onError,
       onSession(merged);
       setStreamingText("");
       setStreamingActive(false);
+      // 流式未收到音频时兜底走非流式 TTS，保证自动朗读
+      if (!hasAudio && voiceEnabled && autoRead) {
+        const lastIndex = merged.messages.map((m) => m.role).lastIndexOf("customer");
+        if (lastIndex >= 0) void speakMessage(merged.messages[lastIndex], lastIndex);
+      }
       // 客户回复完成后再拉一次教练提示
       void fetchLiveTip("after_customer");
     } catch (err) {
