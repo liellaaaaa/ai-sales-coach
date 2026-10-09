@@ -9547,3 +9547,175 @@ body::before { display: none; }
 .login-card .eyebrow {
   display: none;
 }
+
+/* ===== 开训三步向导 ===== */
+.start-wizard {
+  gap: 14px;
+}
+
+.wizard-steps {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 2px 0 4px;
+}
+
+.wizard-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #9aa4b2;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.wizard-step i {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #e8edf5;
+  color: #7a8494;
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.wizard-step em {
+  font-style: normal;
+}
+
+.wizard-step.active {
+  color: #0b57d0;
+}
+
+.wizard-step.active i {
+  background: #0b57d0;
+  color: #fff;
+}
+
+.wizard-step.done {
+  color: #188038;
+}
+
+.wizard-step.done i {
+  background: #d9f0e2;
+  color: #188038;
+}
+
+.wizard-panel {
+  display: grid;
+  gap: 12px;
+  padding: 4px 2px 8px;
+}
+
+.wizard-panel > h3 {
+  font-size: 20px;
+  font-weight: 760;
+  color: #1f2328;
+}
+
+.mode-cards-full {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.mode-cards-full .mode-card {
+  min-height: 140px;
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  padding: 18px 16px;
+  text-align: left;
+  border-radius: 16px;
+  border: 1px solid rgba(214, 222, 234, 0.95);
+  background: #fff;
+}
+
+.mode-cards-full .mode-card b {
+  font-size: 18px;
+  font-weight: 780;
+}
+
+.mode-cards-full .mode-card span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.mode-cards-full .mode-card.active {
+  border-color: #1a73e8;
+  background: #eef4fe;
+  box-shadow: 0 8px 20px rgba(26, 115, 232, 0.12);
+}
+
+.wizard-templates {
+  display: grid;
+  gap: 10px;
+}
+
+.wizard-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(229, 233, 240, 0.9);
+}
+
+.wizard-foot-end {
+  justify-content: space-between;
+}
+
+.wizard-foot .primary,
+.wizard-foot .secondary {
+  min-height: 42px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 760;
+}
+
+.wizard-foot .primary {
+  margin-left: auto;
+}
+
+.start-wizard .customer-info-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
+}
+
+.start-wizard .customer-info-form .demand-field {
+  grid-column: 1 / -1;
+}
+
+.start-wizard .coach-panel {
+  display: none;
+}
+
+.start-wizard .coach-panel.visible {
+  display: block;
+}
+
+@media (max-width: 720px) {
+  .mode-cards-full {
+    grid-template-columns: 1fr;
+  }
+
+  .mode-cards-full .mode-card {
+    min-height: 96px;
+  }
+
+  .start-wizard .customer-info-form {
+    grid-template-columns: 1fr;
+  }
+
+  .wizard-steps {
+    gap: 12px;
+  }
+}
